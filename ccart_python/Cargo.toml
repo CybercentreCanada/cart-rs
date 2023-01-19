@@ -1,0 +1,15 @@
+[package]
+name = "ccart-python"
+version = "0.1.0"
+edition = "2021"
+
+# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+
+[lib]
+name = "ccart"
+crate-type = ["cdylib"]
+
+[dependencies]
+cart_container = { path = "../cart_container" }
+pyo3 = { version = "0.18", features = ["extension-module", "anyhow"] }
+serde_json = "*"

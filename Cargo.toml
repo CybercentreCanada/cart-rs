@@ -1,0 +1,5 @@
+[workspace]
+members = [
+    "cart_container",
+    "ccart_python"
+]
