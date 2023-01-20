@@ -50,7 +50,7 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         with:
-          file: "target/release/*.tar.gz"
+          file: "target/${{ matrix.rust }}/release/*.tar.gz"
           tags: true
           draft: true
 
@@ -82,6 +82,6 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         with:
-          file: "target/release/*.tar.gz"
+          file: "target/${{ matrix.rust }}/release/*.tar.gz"
           tags: true
           draft: true
