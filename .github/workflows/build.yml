@@ -16,7 +16,7 @@ jobs:
       - run: |
           export VERSION=`cargo metadata --format-version 1 | jq '.packages[] | select(.name == "cart_container").version'`
           echo $GITHUB_REF_NAME $VERSION
-          if [[ "$GITHUB_REF_NAME" != "$VERSION" ]] then
+          if [[ "$GITHUB_REF_NAME" != "v${VERSION}" ]] then
             exit 1
           fi
           cargo publish
