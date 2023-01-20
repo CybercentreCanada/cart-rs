@@ -41,6 +41,7 @@ jobs:
           cbindgen --config ./cbindgen.toml --crate cart_container --output target/release/cart.h --lang c
           export NAME = "cart-${GITHUB_REF_NAME}-${{ matrix.rust }}.tar.gz"
           cd target/release
+          ls .
           tar -czvf $NAME cart.h  $(ls libcart.so libcart.a libcart.dll 2>/dev/null)
       - uses: xresloader/upload-to-github-release@v1
         env:
