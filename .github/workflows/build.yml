@@ -1,0 +1,51 @@
+name: build
+
+on:
+  release:
+    types: [created, edited]
+
+jobs:
+  publish:
+    name: "Publish crate"
+    environment: build
+    runs-on: "ubuntu-latest"
+
+    steps:
+      - uses: actions/checkout@v3
+      - uses: dtolnay/rust-toolchain@stable
+      - run: |
+          export VERSION = `cargo metadata --format-version 1 | jq '.packages[] | select(.name == "cart_container").version'`
+          if [[ "$GITHUB_REF_NAME" != "$VERSION" ]] then
+            exit 1
+          fi
+          cargo publish
+
+  build-release:
+    name: "Build Release"
+    needs: publish
+    runs-on: "ubuntu-latest"
+
+    strategy:
+      fail-fast: false
+      matrix:
+        rust: [x86_64-pc-windows-msvc, x86_64-unknown-linux-gnu]
+
+    steps:
+      - uses: actions/checkout@v3
+      - uses: dtolnay/rust-toolchain@master
+        with:
+          toolchain: stable
+          targets: ${{matrix.rust}}
+      - run: |
+          cargo build --release
+          cbindgen --config ./cbindgen.toml --crate cart_container --output target/release/cart.h --lang c
+          export NAME = "cart-${GITHUB_REF_NAME}-${{ matrix.rust }}.tar.gz"
+          cd target/release
+          tar -czvf $NAME cart.h  $(ls libcart.so libcart.a libcart.dll 2>/dev/null)
+      - uses: xresloader/upload-to-github-release@v1
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          file: "target/release/*.tar.gz"
+          tags: true
+          draft: true
