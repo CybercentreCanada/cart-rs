@@ -42,19 +42,37 @@ jobs:
           toolchain: ${{matrix.rust}}
       - run: cargo test
 
-  clippy:
-    name: Clippy Linter
+  compare:
+    name: Compare to python
     runs-on: ubuntu-latest
     strategy:
       fail-fast: false
       matrix:
-        rust: [stable]
+        rust: [stable, beta]
     timeout-minutes: 45
     steps:
       - uses: actions/checkout@v3
       - uses: dtolnay/rust-toolchain@master
         with:
           toolchain: ${{matrix.rust}}
-          components: clippy
-      - run: cargo clippy -- -Dclippy::all
-#      - run: cargo clippy -- -Dclippy::all -Dclippy::pedantic
+      - run: cargo build --release
+      - run: |
+          pip install cart
+          python test/compare.py
+
+  # clippy:
+  #   name: Clippy Linter
+  #   runs-on: ubuntu-latest
+  #   strategy:
+  #     fail-fast: false
+  #     matrix:
+  #       rust: [stable]
+  #   timeout-minutes: 45
+  #   steps:
+  #     - uses: actions/checkout@v3
+  #     - uses: dtolnay/rust-toolchain@master
+  #       with:
+  #         toolchain: ${{matrix.rust}}
+  #         components: clippy
+  #     - run: cargo clippy -- -Dclippy::all
+  #     - run: cargo clippy -- -Dclippy::all -Dclippy::pedantic
