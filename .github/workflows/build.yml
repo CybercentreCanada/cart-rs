@@ -41,9 +41,9 @@ jobs:
           targets: ${{matrix.rust}}
       - run: |
           cargo build --release --target ${{ matrix.rust }}
-          cbindgen --config ./cbindgen.toml --crate cart_container --output target/${{ matrix.rust }}/cart.h --lang c
+          cbindgen --config ./cbindgen.toml --crate cart_container --output target/${{ matrix.rust }}/release/cart.h --lang c
           export NAME="cart-${GITHUB_REF_NAME}-${{ matrix.rust }}.tar.gz"
-          cd target/${{ matrix.rust }}
+          cd target/${{ matrix.rust }}/release/
           ls .
           tar -czvf $NAME cart.h libcart.so libcart.a
       - uses: xresloader/upload-to-github-release@v1
@@ -72,9 +72,9 @@ jobs:
           targets: ${{matrix.rust}}
       - run: |
           cargo build --release --target ${{ matrix.rust }}
-          cbindgen --config ./cbindgen.toml --crate cart_container --output target/${{ matrix.rust }}/cart.h --lang c
+          cbindgen --config ./cbindgen.toml --crate cart_container --output target/${{ matrix.rust }}/release/cart.h --lang c
           export NAME="cart-${GITHUB_REF_NAME}-${{ matrix.rust }}.tar.gz"
-          cd target/${{ matrix.rust }}
+          cd target/${{ matrix.rust }}/release/
           ls .
           tar -czvf $NAME cart.h *.dll *.lib
         shell: bash
