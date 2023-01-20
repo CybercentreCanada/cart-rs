@@ -76,7 +76,7 @@ jobs:
           export NAME="cart-${GITHUB_REF_NAME}-${{ matrix.rust }}.tar.gz"
           cd target/${{ matrix.rust }}/release/
           ls .
-          tar -czvf $NAME cart.h *.dll *.lib
+          tar -czvf $NAME cart.h cart.dll cart.dll.lib cart.lib
         shell: bash
       - uses: xresloader/upload-to-github-release@v1
         env:
