@@ -1,0 +1,60 @@
+name: test
+
+on:
+  push:
+  pull_request:
+  schedule: [cron: "30 5 * * *"]
+
+permissions:
+  contents: read
+
+env:
+  RUSTFLAGS: -Dwarnings
+
+jobs:
+  linux:
+    name: Test suite
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        rust: [stable, beta]
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v3
+      - uses: dtolnay/rust-toolchain@master
+        with:
+          toolchain: ${{matrix.rust}}
+      - run: cargo test
+
+  windows:
+    name: Test suite (windows)
+    runs-on: windows-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        rust: [stable, beta]
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v3
+      - uses: dtolnay/rust-toolchain@master
+        with:
+          toolchain: ${{matrix.rust}}
+      - run: cargo test
+
+  clippy:
+    name: Clippy Linter
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        rust: [stable]
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v3
+      - uses: dtolnay/rust-toolchain@master
+        with:
+          toolchain: ${{matrix.rust}}
+          components: clippy
+      - run: cargo clippy -- -Dclippy::all
+#      - run: cargo clippy -- -Dclippy::all -Dclippy::pedantic
