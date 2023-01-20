@@ -20,6 +20,8 @@ jobs:
             exit 1
           fi
           cargo publish
+        env:
+          CARGO_REGISTRY_TOKEN: '${{ secrets.CARGO_REGISTRY_TOKEN }}'
 
   build-release:
     name: "Build Release"
