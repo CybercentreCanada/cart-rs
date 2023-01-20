@@ -22,4 +22,4 @@ Ce crate fournit des méthodes pour encoder et décoder le format CaRT (qui peut
 
 ## Des détails
 
-Pour plus de détails sur la façon dont le format CaRT est implémenté ou comment il peut être utilisé, vérifiez son implémentation d'origine: https://github.com/CybercentreCanada/cart
+Pour plus de détails sur la façon dont le format CaRT est implémenté ou comment il peut être utilisé, vérifiez son implémentation d'origine: https://github.com/CybercentreCanada/cart#cart-compressed-and-rc4-transport-1
