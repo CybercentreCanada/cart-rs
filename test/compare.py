@@ -29,7 +29,7 @@ def roundtrip(lib):
                                       json.dumps(metadata).encode()) == 0
     resp = lib.cart_unpack_file(temp.name.encode(), out.name.encode())
     assert resp.error == 0, resp.error
-    assert json.loads(bytes(resp.header_json[0:resp.header_json_size])) == metadata
+    assert json.loads(bytes(resp.header_json[0:resp.header_json_size-1])) == metadata
     lib.cart_free_unpack_result(resp)
 
     with open("/bin/bash", 'rb') as handle:
@@ -54,10 +54,12 @@ def rust_py(lib):
 def py_rust(lib):
     temp = tempfile.NamedTemporaryFile('wb')
     out = tempfile.NamedTemporaryFile('rb')
+    metadata = {"hello": "world"}
 
-    cart.pack_file("/bin/bash", temp.name)
+    cart.pack_file("/bin/bash", temp.name, metadata)
     resp = lib.cart_unpack_file(temp.name.encode(), out.name.encode())
     assert resp.error == 0, resp.error
+    assert json.loads(bytes(resp.header_json[0:resp.header_json_size-1])) == metadata
     lib.cart_free_unpack_result(resp)
 
     with open("/bin/bash", 'rb') as handle:
