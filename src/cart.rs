@@ -47,7 +47,7 @@ impl<'a, OUT: Write> Write for CipherPassthroughOut<'a, OUT> {
     }
 }
 
-
+/// Encoding function for cart format.
 pub fn pack_stream<IN: Read, OUT: Write>(mut istream: IN, mut ostream: OUT,
     optional_header: Option<JsonMap>, optional_footer: Option<JsonMap>,
     mut digesters: Vec<Box<dyn Digester>>, rc4_key_override: Option<Vec<u8>>) -> anyhow::Result<()>
@@ -260,6 +260,7 @@ impl<IN: Read> CipherPassthroughIn<IN> {
     }
 }
 
+/// Decode function for cart formatted data.
 pub fn unpack_stream<IN: Read, OUT: Write>(mut istream: IN, mut ostream: OUT,
     rc4_key_override: Option<Vec<u8>>) -> anyhow::Result<(Option<JsonMap>, Option<JsonMap>)>
 {
