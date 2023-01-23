@@ -5,7 +5,9 @@ use rc4::{KeyInit, StreamCipher};
 
 use crate::digesters::Digester;
 
+/// Alias for a serde mapping cart will accept for metadata.
 pub type JsonMap = serde_json::Map<String, serde_json::Value>;
+
 type Rc4 = rc4::Rc4::<rc4::consts::U16>;
 
 // First 8 digits of PI twice.
@@ -13,6 +15,8 @@ const DEFAULT_RC4_KEY: [u8; 16] = [
     0x03, 0x01, 0x04, 0x01, 0x05, 0x09, 0x02, 0x06,
     0x03, 0x01, 0x04, 0x01, 0x05, 0x09, 0x02, 0x06
 ];
+
+// Constants regarding header and footer encoding
 const MAJOR_VERSION: i16 = 1;
 const MANDATORY_HEADER_SIZE: usize = 38;
 const MANDATORY_FOOTER_SIZE: usize = 8 * 3 + 4;
@@ -21,8 +25,7 @@ const HEADER_MAGIC: &[u8; 4] = b"CART";
 const FOOTER_MAGIC: &[u8; 4] = b"TRAC";
 const RESERVED: u64 = 0;
 
-// DEFAULT_DIGESTS = (hashlib.md5, hashlib.sha1, hashlib.sha256, LengthCounter)
-
+// A utility object that adapts a writer to apply the RC4 cypher as data is written.
 struct CipherPassthroughOut<'a, OUT: Write> {
     cipher: Rc4,
     output: &'a mut OUT,
@@ -220,7 +223,7 @@ pub (crate) fn _unpack_header<IN: Read>(mut istream: IN, rc4_key_override: Optio
     return Ok((rc4_key, optional_header, pos))
 }
 
-
+// A utility object that adapts a reader to apply the RC4 cypher as data is read.
 struct CipherPassthroughIn<IN: Read> {
     stream: IN,
     cipher: Rc4,
@@ -250,6 +253,8 @@ impl<IN: Read> CipherPassthroughIn<IN> {
         }
     }
 
+    // Extract the last chunk read from the stream. This can be used to
+    // recover less-than-chunk sized footer data that was appended.
     fn last_chunk(self) -> Vec<u8> {
         self.buffer
     }

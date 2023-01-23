@@ -1,3 +1,7 @@
+///
+/// The [Digester] trait wraps hashes and counter objects to produce hashes or summaries to include in a cart file footer.
+///
+
 use md5::Digest;
 
 pub trait Digester {
@@ -6,6 +10,9 @@ pub trait Digester {
     fn finish(&mut self) -> String;
 }
 
+/// Generate the default set of digests taken for cart files.
+///
+/// This includes the md5, sha1, sha256 hashes, and the length of the file.
 pub fn default_digesters() -> Vec<Box<dyn Digester>> {
     vec![
         Box::new(MD5Digest::new()),
@@ -15,7 +22,7 @@ pub fn default_digesters() -> Vec<Box<dyn Digester>> {
     ]
 }
 
-struct MD5Digest {
+pub struct MD5Digest {
     hasher: md5::Md5
 }
 
@@ -42,7 +49,7 @@ impl Digester for MD5Digest {
     }
 }
 
-struct SHA1Digest {
+pub struct SHA1Digest {
     hasher: sha1::Sha1
 }
 
@@ -69,7 +76,7 @@ impl Digester for SHA1Digest {
     }
 }
 
-struct SHA256Digest {
+pub struct SHA256Digest {
     hasher: sha2::Sha256
 }
 
@@ -96,7 +103,7 @@ impl Digester for SHA256Digest {
     }
 }
 
-struct LengthDigest {
+pub struct LengthDigest {
     counter: u64
 }
 

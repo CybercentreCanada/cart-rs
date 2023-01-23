@@ -1,9 +1,20 @@
+///
+/// The CaRT file format is used to store/transfer malware and it's associated metadata.
+/// It neuters the malware so it cannot be executed and encrypts it so anti-virus software
+/// cannot flag the CaRT file as malware.
+///
+/// The functions, structs, and constants in the root of the package prefixed with `cart`
+/// are all exported to build a c library.
+///
+/// An interfaces more suitable for calling from rust is in the [cart] module.
+///
+
 use std::ffi::c_char;
 use std::ptr::{null, null_mut};
 
 use cart::{JsonMap, _unpack_header};
-pub use cart::{pack_stream, unpack_stream};
-pub use digesters::default_digesters;
+use cart::{pack_stream, unpack_stream};
+use digesters::default_digesters;
 use libc::c_void;
 
 use crate::cart::_unpack_required_header;
