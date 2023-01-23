@@ -60,6 +60,23 @@ jobs:
           pip install cart
           python test/compare.py
 
+  c-link:
+    name: C Linking Test
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        rust: [stable, beta]
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v3
+      - uses: dtolnay/rust-toolchain@master
+        with:
+          toolchain: ${{matrix.rust}}
+      - run: |
+          cd test/c/
+          make test
+
   # clippy:
   #   name: Clippy Linter
   #   runs-on: ubuntu-latest

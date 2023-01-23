@@ -322,15 +322,33 @@ impl CartUnpackResult {
         }
     }
 
+    fn str_to_ptr(mut data: Vec<u8>) -> (*mut u8, u64) {
+        if !data.is_empty() {
+            data.push(0);
+        }
+        Self::data_to_ptr(data)
+    }
+
+    fn data_to_ptr(data: Vec<u8>) -> (*mut u8, u64) {
+        if data.is_empty() {
+            (null_mut(), 0)
+        } else {
+            let mut data = data.into_boxed_slice();
+            let ptr = data.as_mut_ptr();
+            let len = data.len() as u64;
+            std::mem::forget(data);
+            (ptr, len)
+        }
+    }
+
     fn new(body: Vec<u8>, header: Option<JsonMap>, footer: Option<JsonMap>) -> Self {
         let mut out = Self::new_meta(header, footer);
 
-        let mut body = body.into_boxed_slice();
+        let (ptr, len) = Self::data_to_ptr(body);
 
-        out.body = body.as_mut_ptr();
-        out.body_size = body.len() as u64;
+        out.body = ptr;
+        out.body_size = len;
 
-        std::mem::forget(body);
         return out;
     }
 
@@ -344,21 +362,18 @@ impl CartUnpackResult {
             None => Default::default(),
         };
 
-        let mut header_data = header_data.into_boxed_slice();
-        let mut footer_data = footer_data.into_boxed_slice();
+        let (header_json, header_json_size) = Self::str_to_ptr(header_data);
+        let (footer_json, footer_json_size) = Self::str_to_ptr(footer_data);
 
-        let out = CartUnpackResult {
+        Self {
             error: CART_NO_ERROR,
             body: std::ptr::null_mut(),
             body_size: 0,
-            header_json: header_data.as_mut_ptr(),
-            header_json_size: header_data.len() as u64,
-            footer_json: footer_data.as_mut_ptr(),
-            footer_json_size: footer_data.len() as u64,
-        };
-        std::mem::forget(header_data);
-        std::mem::forget(footer_data);
-        out
+            header_json,
+            header_json_size,
+            footer_json,
+            footer_json_size,
+        }
     }
 }
 
