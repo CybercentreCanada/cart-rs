@@ -3,49 +3,22 @@ use anyhow::Context;
 use bytes::{BufMut, Buf};
 use rc4::{KeyInit, StreamCipher};
 
+use crate::cipher::{CipherPassthroughIn, CipherPassthroughOut, DEFAULT_RC4_KEY, Rc4};
 use crate::digesters::Digester;
 
 /// Alias for a serde mapping cart will accept for metadata.
 pub type JsonMap = serde_json::Map<String, serde_json::Value>;
 
-type Rc4 = rc4::Rc4::<rc4::consts::U16>;
-
-// First 8 digits of PI twice.
-const DEFAULT_RC4_KEY: [u8; 16] = [
-    0x03, 0x01, 0x04, 0x01, 0x05, 0x09, 0x02, 0x06,
-    0x03, 0x01, 0x04, 0x01, 0x05, 0x09, 0x02, 0x06
-];
 
 // Constants regarding header and footer encoding
 const MAJOR_VERSION: i16 = 1;
 const MANDATORY_HEADER_SIZE: usize = 38;
 const MANDATORY_FOOTER_SIZE: usize = 8 * 3 + 4;
-const BLOCK_SIZE: usize = 64 * 1024;
+pub (crate) const BLOCK_SIZE: usize = 64 * 1024;
 const HEADER_MAGIC: &[u8; 4] = b"CART";
 const FOOTER_MAGIC: &[u8; 4] = b"TRAC";
 const RESERVED: u64 = 0;
 
-// A utility object that adapts a writer to apply the RC4 cypher as data is written.
-struct CipherPassthroughOut<'a, OUT: Write> {
-    cipher: Rc4,
-    output: &'a mut OUT,
-    buffer: Vec<u8>,
-}
-
-impl<'a, OUT: Write> Write for CipherPassthroughOut<'a, OUT> {
-    fn write(&mut self, buf: &[u8]) -> std::io::Result<usize> {
-        self.buffer.resize(buf.len(), 0);
-        if let Err(err) = self.cipher.apply_keystream_b2b(buf, &mut self.buffer) {
-            return Err(std::io::Error::new(std::io::ErrorKind::InvalidData, anyhow::anyhow!(err)))
-        };
-        self.output.write_all(&self.buffer[0..buf.len()])?;
-        return Ok(buf.len());
-    }
-
-    fn flush(&mut self) -> std::io::Result<()> {
-        self.output.flush()
-    }
-}
 
 /// Encoding function for cart format.
 pub fn pack_stream<IN: Read, OUT: Write>(mut istream: IN, mut ostream: OUT,
@@ -104,13 +77,10 @@ pub fn pack_stream<IN: Read, OUT: Write>(mut istream: IN, mut ostream: OUT,
         ostream.write_all(&buffer)?;
     };
 
-    // Create new processors for rc4
-    let cipher = Rc4::new_from_slice(&rc4_key)?;
-
     // Create a zlib processor which will write its output to the passthrough
     // processor which will rc4 it before writing to the output stream
     let mut bz = flate2::write::ZlibEncoder::new(
-        CipherPassthroughOut{cipher, output: &mut ostream, buffer: vec![0u8; BLOCK_SIZE]},
+        CipherPassthroughOut::new(&mut ostream, &rc4_key)?,
         flate2::Compression::fast());
     let mut buffer = vec![0u8; BLOCK_SIZE];
     loop {
@@ -166,21 +136,21 @@ pub fn pack_stream<IN: Read, OUT: Write>(mut istream: IN, mut ostream: OUT,
     return Ok(())
 }
 
-pub (crate) fn _unpack_required_header<IN: Read>(mut istream: IN, rc4_key_override: Option<Vec<u8>>)
+/// Decode and check only the mandatory parts of the header
+///
+/// This returns the rc4 key, the size of the optional header, and how many bytes have been read.
+pub (crate) fn unpack_required_header<IN: Read>(mut istream: IN, rc4_key_override: Option<Vec<u8>>)
     -> anyhow::Result<(Vec<u8>, u64, u64)>
 {
-    //     # unpack to output stream, return header / footer
-    //     # First read and unpack the mandatory header. This will tell us the RC4 key
-    //     # and optional header length.
-    //     # Optional header and rest of document are RC4'd
     let mut pos: u64 = 0;
 
-//     # Read and unpack the madatory header.
+    // Read and unpack the madatory header.
     let mut header_buffer = vec![0u8; MANDATORY_HEADER_SIZE];
     istream.read_exact(&mut header_buffer)?;
     pos += MANDATORY_HEADER_SIZE as u64;
     let mut header_buffer = bytes::Bytes::from(header_buffer);
 
+    // Check fixed value fields
     {
         if !header_buffer.starts_with(HEADER_MAGIC) {
             return Err(anyhow::anyhow!("Could not unpack mandatory header"))
@@ -193,9 +163,12 @@ pub (crate) fn _unpack_required_header<IN: Read>(mut istream: IN, rc4_key_overri
             return Err(anyhow::anyhow!("Could not unpack mandatory header"))
         }
     }
+
+    // Read the dynamic values fields
     let rc4_key = header_buffer.copy_to_bytes(16);
     let opt_header_len = header_buffer.get_u64_le();
 
+    // Swap out the rc4 key if a different one is being provided
     let rc4_key = match rc4_key_override {
         Some(key) => key,
         None => rc4_key.to_vec(),
@@ -204,12 +177,12 @@ pub (crate) fn _unpack_required_header<IN: Read>(mut istream: IN, rc4_key_overri
     return Ok((rc4_key, opt_header_len, pos))
 }
 
-
-pub (crate) fn _unpack_header<IN: Read>(mut istream: IN, rc4_key_override: Option<Vec<u8>>)
+/// Decode and check the entire header, including the optional metadata
+pub (crate) fn unpack_header<IN: Read>(mut istream: IN, rc4_key_override: Option<Vec<u8>>)
     -> anyhow::Result<(Vec<u8>, Option<JsonMap>, u64)>
 {
-    let (rc4_key, opt_header_len, mut pos) = _unpack_required_header(&mut istream, rc4_key_override)?;
-//     # Read and unpack any optional header.
+    let (rc4_key, opt_header_len, mut pos) = unpack_required_header(&mut istream, rc4_key_override)?;
+    // Read and unpack any optional header.
     let mut optional_header = None;
     if opt_header_len > 0 {
         let mut buffer = vec![0u8; opt_header_len as usize];
@@ -223,43 +196,6 @@ pub (crate) fn _unpack_header<IN: Read>(mut istream: IN, rc4_key_override: Optio
     return Ok((rc4_key, optional_header, pos))
 }
 
-// A utility object that adapts a reader to apply the RC4 cypher as data is read.
-struct CipherPassthroughIn<IN: Read> {
-    stream: IN,
-    cipher: Rc4,
-    buffer: Vec<u8>
-}
-
-impl<IN: Read> Read for CipherPassthroughIn<IN> {
-    fn read(&mut self, buf: &mut [u8]) -> std::io::Result<usize> {
-        self.buffer.resize(buf.len(), 0);
-        let out = self.stream.read(&mut self.buffer);
-        if let Ok(size) = &out {
-            self.buffer.resize(*size, 0);
-            if let Err(err) = self.cipher.apply_keystream_b2b(&self.buffer, &mut buf[0..*size]) {
-                return Err(std::io::Error::new(std::io::ErrorKind::InvalidData, anyhow::anyhow!("rc4 error {err}")))
-            }
-        }
-        return out;
-    }
-}
-
-impl<IN: Read> CipherPassthroughIn<IN> {
-    fn new(stream: IN, cipher: Rc4) -> Self {
-        Self {
-            stream,
-            cipher,
-            buffer: vec![]
-        }
-    }
-
-    // Extract the last chunk read from the stream. This can be used to
-    // recover less-than-chunk sized footer data that was appended.
-    fn last_chunk(self) -> Vec<u8> {
-        self.buffer
-    }
-}
-
 /// Decode function for cart formatted data.
 pub fn unpack_stream<IN: Read, OUT: Write>(mut istream: IN, mut ostream: OUT,
     rc4_key_override: Option<Vec<u8>>) -> anyhow::Result<(Option<JsonMap>, Option<JsonMap>)>
@@ -268,7 +204,7 @@ pub fn unpack_stream<IN: Read, OUT: Write>(mut istream: IN, mut ostream: OUT,
     // First read and unpack the mandatory header. This will tell us the RC4 key
     // and optional header length.
     // Optional header and rest of document are RC4'd
-    let (rc4_key, optional_header, _pos) = _unpack_header(&mut istream, rc4_key_override)
+    let (rc4_key, optional_header, _pos) = unpack_header(&mut istream, rc4_key_override)
         .context("Could not unpack header")?;
 
     // Read / Unpack / Output the binary stream 1 block at a time.

@@ -12,13 +12,14 @@
 use std::ffi::c_char;
 use std::ptr::{null, null_mut};
 
-use cart::{JsonMap, _unpack_header};
+use cart::{JsonMap, unpack_header};
 use cart::{pack_stream, unpack_stream};
 use digesters::default_digesters;
 use libc::c_void;
 
-use crate::cart::_unpack_required_header;
+use crate::cart::unpack_required_header;
 
+mod cipher;
 pub mod cart;
 pub mod digesters;
 
@@ -484,7 +485,7 @@ pub extern "C" fn cart_is_file_cart (
         Err(_) => return false,
     };
 
-    _unpack_required_header(input_file, None).is_ok()
+    unpack_required_header(input_file, None).is_ok()
 }
 
 /// Test if the given file object contains cart data.
@@ -496,7 +497,7 @@ pub extern "C" fn cart_is_stream_cart (
 ) -> bool {
     // Open input file
     let input_file = CFileReader::new(stream);
-    _unpack_required_header(input_file, None).is_ok()
+    unpack_required_header(input_file, None).is_ok()
 }
 
 /// Test if the given buffer contains cart data.
@@ -510,7 +511,7 @@ pub extern "C" fn cart_is_data_cart (
         let input_buffer = data as *const u8;
         std::slice::from_raw_parts(input_buffer, data_size)
     };
-    _unpack_required_header(input_data, None).is_ok()
+    unpack_required_header(input_data, None).is_ok()
 }
 
 /// Open the cart file at the given path and read out its metadata.
@@ -526,7 +527,7 @@ pub extern "C" fn cart_get_file_metadata_only(
         Err(err) => return CartUnpackResult::new_err(err),
     };
 
-    match _unpack_header(input_file, None) {
+    match unpack_header(input_file, None) {
         Ok((_, header, _)) => CartUnpackResult::new_meta(header, None),
         Err(_) => CartUnpackResult::new_err(CART_ERROR_PROCESSING),
     }
@@ -541,7 +542,7 @@ pub extern "C" fn cart_get_stream_metadata_only(
 ) -> CartUnpackResult {
     let input_file = CFileReader::new(stream);
 
-    match _unpack_header(input_file, None) {
+    match unpack_header(input_file, None) {
         Ok((_, header, _)) => CartUnpackResult::new_meta(header, None),
         Err(_) => CartUnpackResult::new_err(CART_ERROR_PROCESSING),
     }
@@ -559,7 +560,7 @@ pub extern "C" fn cart_get_data_metadata_only(
         let input_buffer = data as *const u8;
         std::slice::from_raw_parts(input_buffer, data_size)
     };
-    match _unpack_header(input_data, None) {
+    match unpack_header(input_data, None) {
         Ok((_, header, _)) => CartUnpackResult::new_meta(header, None),
         Err(_) => CartUnpackResult::new_err(CART_ERROR_PROCESSING),
     }
