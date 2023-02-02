@@ -1,5 +1,6 @@
 ///
-/// The [Digester] trait wraps hashes and counter objects to produce hashes or summaries to include in a cart file footer.
+/// The [Digester] trait wraps hashes and counter objects to produce hashes or summaries
+/// to include in a cart file footer.
 ///
 
 use md5::Digest;

@@ -104,17 +104,28 @@ pub fn pack_stream<IN: Read, OUT: Write>(mut istream: IN, mut ostream: OUT,
     bz.finish()?;
 
     // insert any requests digests into the optional footer.
-    let mut optional_footer = optional_footer.unwrap_or_default();
-    for mut digest in digesters {
-        optional_footer.insert(digest.name(), serde_json::Value::String(digest.finish()));
-    }
+    let optional_footer = if digesters.is_empty() {
+        optional_footer
+    } else {
+        let mut optional_footer = optional_footer.unwrap_or_default();
+        for mut digest in digesters {
+            optional_footer.insert(digest.name(), serde_json::Value::String(digest.finish()));
+        }
+        Some(optional_footer)
+    };
 
-    let opt_footer_pos = pos;
-    let mut opt_footer_buffer = serde_json::to_vec(&optional_footer)?;
-    let mut cipher = Rc4::new_from_slice(&rc4_key)?;
-    cipher.try_apply_keystream(&mut opt_footer_buffer)?;
-    let opt_footer_len = opt_footer_buffer.len() as u64;
-    ostream.write_all(&opt_footer_buffer)?;
+    // Write the optional footer if found
+    let (footer_pos, footer_len) = if let Some(footer) = optional_footer {
+        let opt_footer_pos = pos;
+        let mut opt_footer_buffer = serde_json::to_vec(&footer)?;
+        let mut cipher = Rc4::new_from_slice(&rc4_key)?;
+        cipher.try_apply_keystream(&mut opt_footer_buffer)?;
+        let opt_footer_len = opt_footer_buffer.len() as u64;
+        ostream.write_all(&opt_footer_buffer)?;
+        (opt_footer_pos, opt_footer_len)
+    } else {
+        (0, 0)
+    };
 
     // Write the mandatory footer
     ostream.write_all(&{
@@ -123,8 +134,8 @@ pub fn pack_stream<IN: Read, OUT: Write>(mut istream: IN, mut ostream: OUT,
         footer.reserve(MANDATORY_FOOTER_SIZE);
         footer.put_slice(FOOTER_MAGIC); // MAGIC
         footer.put_u64_le(RESERVED); // Reserved
-        footer.put_u64_le(opt_footer_pos);
-        footer.put_u64_le(opt_footer_len);
+        footer.put_u64_le(footer_pos);
+        footer.put_u64_le(footer_len);
 
         // Check the footer, and write it
         if footer.len() != MANDATORY_FOOTER_SIZE {
@@ -258,9 +269,30 @@ pub fn unpack_stream<IN: Read, OUT: Write>(mut istream: IN, mut ostream: OUT,
 mod tests {
     use std::io::{SeekFrom, Seek};
 
+    use md5::Digest;
+
+    use crate::cart::JsonMap;
     use crate::digesters::default_digesters;
 
     use super::{pack_stream, unpack_stream};
+
+    #[test]
+    fn round_trip_headerless() {
+        let raw_data = std::include_bytes!("cart.rs");
+        let input_cursor = std::io::Cursor::new(raw_data);
+
+        let mut buffer = tempfile::tempfile().unwrap();
+        pack_stream(input_cursor, &mut buffer, None, None, vec![], None).unwrap();
+        buffer.seek(SeekFrom::Start(0)).unwrap();
+
+        let mut output = vec![];
+        let (header, footer) = unpack_stream(buffer, &mut output, None).unwrap();
+
+        assert!(header.is_none());
+        assert!(footer.is_none());
+
+        assert_eq!(output, raw_data);
+    }
 
     #[test]
     fn round_trip() {
@@ -268,12 +300,39 @@ mod tests {
         let input_cursor = std::io::Cursor::new(raw_data);
 
         let mut buffer = tempfile::tempfile().unwrap();
-        pack_stream(input_cursor, &mut buffer, None, None, default_digesters(), None).unwrap();
+
+        let mut original_header = JsonMap::new();
+        original_header.insert("abc".to_owned(), serde_json::to_value("123").unwrap());
+
+        let mut original_footer = JsonMap::new();
+        original_footer.insert("xyz".to_owned(), serde_json::to_value("999999999999999").unwrap());
+
+        pack_stream(
+            input_cursor,
+            &mut buffer,
+            Some(original_header.clone()),
+            Some(original_footer.clone()),
+            default_digesters(),
+            None
+        ).unwrap();
         buffer.seek(SeekFrom::Start(0)).unwrap();
 
         let mut output = vec![];
-        unpack_stream(buffer, &mut output, None).unwrap();
+        let (header, footer) = unpack_stream(buffer, &mut output, None).unwrap();
 
+        // Check header
+        let header = header.unwrap();
+        assert_eq!(header, original_header);
+
+        // Check footer
+        let footer = footer.unwrap();
+        assert_eq!(footer.get("length"), Some(&serde_json::to_value(raw_data.len().to_string()).unwrap()));
+        let mut hasher = sha2::Sha256::new();
+        hasher.update(raw_data);
+        assert_eq!(footer.get("sha256"), Some(&serde_json::to_value(format!("{:x}", hasher.finalize())).unwrap()));
+        assert_eq!(footer.get("xyz"), Some(&serde_json::to_value("999999999999999").unwrap()));
+
+        // Check payload
         assert_eq!(output, raw_data);
     }
 
@@ -288,6 +347,33 @@ mod tests {
 
         let mut output = vec![];
         unpack_stream(buffer, &mut output, None).unwrap();
+
+        assert_eq!(output, raw_data);
+    }
+
+    #[test]
+    fn custom_key() {
+        let raw_data = std::include_bytes!("cart.rs");
+        let input_cursor = std::io::Cursor::new(raw_data);
+
+        let custom_key = vec![0x01u8; 16];
+
+
+        let mut buffer = tempfile::tempfile().unwrap();
+        pack_stream(input_cursor, &mut buffer, None, None, vec![], Some(custom_key.clone())).unwrap();
+        buffer.seek(SeekFrom::Start(0)).unwrap();
+
+        // Fail to open it with normal key
+        let mut output = vec![];
+        assert!(unpack_stream(&mut buffer, &mut output, None).is_err());
+        buffer.seek(SeekFrom::Start(0)).unwrap();
+
+        // Open with custom key
+        let mut output = vec![];
+        let (header, footer) = unpack_stream(buffer, &mut output, Some(custom_key)).unwrap();
+
+        assert!(header.is_none());
+        assert!(footer.is_none());
 
         assert_eq!(output, raw_data);
     }
