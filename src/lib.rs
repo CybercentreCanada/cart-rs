@@ -616,11 +616,17 @@ mod tests {
 
     use libc::fopen;
 
-    use crate::{cart_pack_file_default, CART_NO_ERROR, cart_unpack_file, cart_free_unpack_result, cart_is_file_cart, cart_is_stream_cart, cart_is_data_cart, cart_unpack_stream, cart_unpack_data, cart_get_file_metadata_only, cart_get_stream_metadata_only, cart_get_data_metadata_only, cart_pack_stream_default, cart_pack_data_default};
+    use crate::{cart_pack_file_default, CART_NO_ERROR, cart_unpack_file, cart_free_unpack_result, cart_is_file_cart, cart_is_stream_cart, cart_is_data_cart, cart_unpack_stream, cart_unpack_data, cart_get_file_metadata_only, cart_get_stream_metadata_only, cart_get_data_metadata_only, cart_pack_stream_default, cart_pack_data_default, cart_free_pack_result};
 
 
     #[test]
-    fn rount_trip_file() {
+    fn round_trip_file() {
+        // Prepare input json
+        let mut input_meta = serde_json::Map::new();
+        input_meta.insert("cat".to_owned(), serde_json::to_value("dog").unwrap());
+        let input_json = serde_json::to_string(&input_meta).unwrap();
+        let input_json = CString::new(input_json).unwrap();
+
         // prepare an input
         let raw_data = std::include_bytes!("cart.rs");
         let mut input = tempfile::NamedTempFile::new().unwrap();
@@ -630,25 +636,101 @@ mod tests {
         // Encode the data with cart
         let buffer = tempfile::NamedTempFile::new().unwrap();
         let buffer_path = CString::new(buffer.path().to_str().unwrap()).unwrap();
-        assert_eq!(cart_pack_file_default(input_path.as_ptr(), buffer_path.as_ptr(), null()), CART_NO_ERROR);
+        assert_eq!(cart_pack_file_default(input_path.as_ptr(), buffer_path.as_ptr(), input_json.as_ptr()), CART_NO_ERROR);
 
         // Decode the cart data
         let mut output = tempfile::NamedTempFile::new().unwrap();
         let output_path = CString::new(output.path().to_str().unwrap()).unwrap();
         let out = cart_unpack_file(buffer_path.as_ptr(), output_path.as_ptr());
         assert_eq!(out.error, CART_NO_ERROR);
-        assert_eq!(out.header_json, null_mut());
-        assert_eq!(out.header_json_size, 0);
         assert_eq!(out.body, null_mut());
         assert_eq!(out.body_size, 0);
         assert!(out.footer_json != null_mut());
         assert!(out.footer_json_size > 0);
 
+        // Check the header metadata
+        let output_json = unsafe { std::slice::from_raw_parts(out.header_json, out.header_json_size as usize - 1) };
+        let output_meta: serde_json::Map<String, serde_json::Value> = serde_json::from_slice(output_json).unwrap();
+        assert_eq!(output_meta, input_meta);
+
+        // Check the output is decoded right
         let mut output_data = vec![];
         let bytes = output.as_file_mut().read_to_end(&mut output_data).unwrap();
         assert_eq!(bytes, raw_data.len());
         assert_eq!(output_data, raw_data);
 
+        // Release resources
+        cart_free_unpack_result(out);
+    }
+
+    #[test]
+    fn round_trip_stream() {
+        // prepare an input
+        let raw_data = std::include_bytes!("cart.rs");
+        let mut input = tempfile::NamedTempFile::new().unwrap();
+        input.write_all(raw_data).unwrap();
+        let input_path = CString::new(input.path().to_str().unwrap()).unwrap();
+        let mode_r = CString::new("rb").unwrap();
+        let input_file = unsafe {fopen(input_path.as_ptr(), mode_r.as_ptr())};
+
+        // Encode the data with cart
+        let buffer = tempfile::NamedTempFile::new().unwrap();
+        let buffer_path = CString::new(buffer.path().to_str().unwrap()).unwrap();
+        let mode_rw = CString::new("rwb+").unwrap();
+        let buffer_file = unsafe {fopen(buffer_path.as_ptr(), mode_rw.as_ptr())};
+        assert_eq!(cart_pack_stream_default(input_file, buffer_file, null()), CART_NO_ERROR);
+
+        // Decode the cart data
+        let buffer_file = unsafe {fopen(buffer_path.as_ptr(), mode_rw.as_ptr())};
+        let mut output = tempfile::NamedTempFile::new().unwrap();
+        let output_path = CString::new(output.path().to_str().unwrap()).unwrap();
+        let output_file = unsafe {fopen(output_path.as_ptr(), mode_rw.as_ptr())};
+        let out = cart_unpack_stream(buffer_file, output_file);
+        assert_eq!(out.error, CART_NO_ERROR);
+        assert_eq!(out.body, null_mut());
+        assert_eq!(out.body_size, 0);
+        assert_eq!(out.header_json, null_mut());
+        assert_eq!(out.header_json_size, 0);
+        assert!(out.footer_json != null_mut());
+        assert!(out.footer_json_size > 0);
+
+        // Check the output is decoded right
+        let mut output_data = vec![];
+        let bytes = output.as_file_mut().read_to_end(&mut output_data).unwrap();
+        assert_eq!(bytes, raw_data.len());
+        assert_eq!(output_data, raw_data);
+
+        // Release resources
+        cart_free_unpack_result(out);
+    }
+
+    #[test]
+    fn round_trip_buffer() {
+        // prepare an input
+        let raw_data = std::include_bytes!("cart.rs");
+
+        // Encode the data with cart
+        let packed = cart_pack_data_default(raw_data.as_ptr() as *const i8, raw_data.len(), null());
+        assert_eq!(packed.error, CART_NO_ERROR);
+
+        // Decode the cart data
+        // let buffer_file = unsafe {fopen(buffer_path.as_ptr(), mode_rw.as_ptr())};
+        // let mut output = tempfile::NamedTempFile::new().unwrap();
+        // let output_path = CString::new(output.path().to_str().unwrap()).unwrap();
+        // let output_file = unsafe {fopen(output_path.as_ptr(), mode_rw.as_ptr())};
+        let out = cart_unpack_data(packed.packed as *const i8, packed.packed_size as usize);
+        assert_eq!(out.error, CART_NO_ERROR);
+        assert_eq!(out.header_json, null_mut());
+        assert_eq!(out.header_json_size, 0);
+        assert!(out.footer_json != null_mut());
+        assert!(out.footer_json_size > 0);
+
+        // Check the output is decoded right
+        let output_data = unsafe { std::slice::from_raw_parts(out.body, out.body_size as usize)};
+        assert_eq!(output_data, raw_data);
+
+        // Release resources
+        cart_free_pack_result(packed);
         cart_free_unpack_result(out);
     }
 
