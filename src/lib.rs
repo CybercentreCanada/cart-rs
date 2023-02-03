@@ -637,6 +637,7 @@ mod tests {
         let buffer = tempfile::NamedTempFile::new().unwrap();
         let buffer_path = CString::new(buffer.path().to_str().unwrap()).unwrap();
         assert_eq!(cart_pack_file_default(input_path.as_ptr(), buffer_path.as_ptr(), input_json.as_ptr()), CART_NO_ERROR);
+        assert!(cart_is_file_cart(buffer_path.as_ptr()));
 
         // Decode the cart data
         let mut output = tempfile::NamedTempFile::new().unwrap();
@@ -679,6 +680,8 @@ mod tests {
         let mode_rw = CString::new("rwb+").unwrap();
         let buffer_file = unsafe {fopen(buffer_path.as_ptr(), mode_rw.as_ptr())};
         assert_eq!(cart_pack_stream_default(input_file, buffer_file, null()), CART_NO_ERROR);
+        let buffer_file = unsafe {fopen(buffer_path.as_ptr(), mode_rw.as_ptr())};
+        assert!(cart_is_stream_cart(buffer_file));
 
         // Decode the cart data
         let buffer_file = unsafe {fopen(buffer_path.as_ptr(), mode_rw.as_ptr())};
@@ -712,12 +715,9 @@ mod tests {
         // Encode the data with cart
         let packed = cart_pack_data_default(raw_data.as_ptr() as *const i8, raw_data.len(), null());
         assert_eq!(packed.error, CART_NO_ERROR);
+        assert!(cart_is_data_cart(packed.packed as *const i8, packed.packed_size as usize));
 
         // Decode the cart data
-        // let buffer_file = unsafe {fopen(buffer_path.as_ptr(), mode_rw.as_ptr())};
-        // let mut output = tempfile::NamedTempFile::new().unwrap();
-        // let output_path = CString::new(output.path().to_str().unwrap()).unwrap();
-        // let output_file = unsafe {fopen(output_path.as_ptr(), mode_rw.as_ptr())};
         let out = cart_unpack_data(packed.packed as *const i8, packed.packed_size as usize);
         assert_eq!(out.error, CART_NO_ERROR);
         assert_eq!(out.header_json, null_mut());
@@ -733,6 +733,24 @@ mod tests {
         cart_free_pack_result(packed);
         cart_free_unpack_result(out);
     }
+
+    #[test]
+    fn bad_input_buffer() {
+        // prepare an input
+        let raw_data = std::include_bytes!("cart.rs");
+        let bad_metadata = r#"{"name": "snake}"#;
+        let bad_metadata = CString::new(bad_metadata).unwrap();
+
+        // Encode with bad metadata json
+        let packed = cart_pack_data_default(raw_data.as_ptr() as *const i8, raw_data.len(), bad_metadata.as_ptr());
+        assert_ne!(packed.error, CART_NO_ERROR);
+
+        // Decode with bad data
+        assert!(!cart_is_data_cart(raw_data.as_ptr() as *const i8, raw_data.len()));
+        let packed = cart_unpack_data(raw_data.as_ptr() as *const i8, raw_data.len());
+        assert_ne!(packed.error, CART_NO_ERROR);
+    }
+
 
     #[test]
     fn null_is_cart_calls() {
