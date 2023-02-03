@@ -14,12 +14,13 @@ use std::ptr::{null, null_mut};
 
 use cart::{JsonMap, unpack_header};
 use cart::{pack_stream, unpack_stream};
+use cutil::{CFileReader, CFileWriter};
 use digesters::default_digesters;
-use libc::c_void;
 
 use crate::cart::unpack_required_header;
 
 mod cipher;
+mod cutil;
 pub mod cart;
 pub mod digesters;
 
@@ -33,6 +34,8 @@ pub const CART_ERROR_OPEN_FILE_READ: u32 = 2;
 pub const CART_ERROR_OPEN_FILE_WRITE: u32 = 3;
 /// Error code when input json could not be parsed
 pub const CART_ERROR_BAD_JSON_ARGUMENT: u32 = 5;
+/// Error code when an unexpected null argument was passed
+pub const CART_ERROR_NULL_ARGUMENT: u32 = 7;
 /// Error code when an error occurs processing the input data
 pub const CART_ERROR_PROCESSING: u32 = 6;
 
@@ -135,55 +138,6 @@ pub extern "C" fn cart_pack_file_default(
 }
 
 
-struct CFileReader {
-    stream: *mut libc::FILE
-}
-
-impl std::io::Read for CFileReader {
-    fn read(&mut self, buf: &mut [u8]) -> std::io::Result<usize> {
-        unsafe {
-            let ptr = buf.as_mut_ptr() as *mut c_void;
-            let size = libc::fread(ptr, 1, buf.len(), self.stream);
-            if size == 0 {
-                if libc::feof(self.stream) != 0 {
-                    return Ok(size)
-                } else {
-                    return Err(std::io::Error::new(std::io::ErrorKind::InvalidData, anyhow::anyhow!("Failed to read from raw file handle")))
-                }
-            } else {
-                return Ok(size)
-            }
-        };
-    }
-}
-
-impl CFileReader {
-    fn new(stream: *mut libc::FILE) -> Self {
-        Self{stream}
-    }
-}
-
-struct CFileWriter {
-    stream: *mut libc::FILE
-}
-
-impl std::io::Write for CFileWriter {
-    fn write(&mut self, buf: &[u8]) -> std::io::Result<usize> {
-        unsafe {
-            let ptr = buf.as_ptr() as *const c_void;
-            Ok(libc::fwrite(ptr, 1, buf.len(), self.stream))
-        }
-    }
-
-    fn flush(&mut self) -> std::io::Result<()> {
-        if unsafe {libc::fflush(self.stream)} == 0 {
-            Ok(())
-        } else {
-            Err(std::io::Error::new(std::io::ErrorKind::InvalidData, anyhow::anyhow!("Failed to flush raw file handle")))
-        }
-    }
-}
-
 /// Cart encode between open libc file handles.
 ///
 /// Encode a file in the cart format using default parameters for all optional parameters.
@@ -196,8 +150,17 @@ pub extern "C" fn cart_pack_stream_default(
     header_json: *const c_char,
 ) -> u32 {
     // Open input file
-    let input_file = CFileReader{stream: input_stream};
+    let input_file = match CFileReader::new(input_stream) {
+        Ok(input) => input,
+        Err(_) => return CART_ERROR_NULL_ARGUMENT,
+    };
     let input_file = std::io::BufReader::new(input_file);
+
+    // Open output file
+    let output_file = match CFileWriter::new(output_stream) {
+        Ok(output) => output,
+        Err(_) => return CART_ERROR_NULL_ARGUMENT,
+    };
 
     // Load in the header json if any is set.
     let header_json = match _ready_json(header_json) {
@@ -208,7 +171,7 @@ pub extern "C" fn cart_pack_stream_default(
     // Process stream
     let result = pack_stream(
         input_file,
-        CFileWriter{stream: output_stream},
+        output_file,
         header_json,
         None,
         default_digesters(),
@@ -263,6 +226,10 @@ pub extern "C" fn cart_pack_data_default(
     input_buffer_size: usize,
     header_json: *const c_char,
 ) -> CartPackResult {
+    if input_buffer == null() || input_buffer_size == 0 {
+        return CartPackResult::new_err(CART_ERROR_NULL_ARGUMENT)
+    }
+
     // cast c pointer to rust slice
     let input_data = unsafe {
         let input_buffer = input_buffer as *const u8;
@@ -425,9 +392,15 @@ pub extern "C" fn cart_unpack_stream(
     output_stream: *mut libc::FILE,
 ) -> CartUnpackResult {
     // Wrap the input file object
-    let input_stream = CFileReader {stream: input_stream};
+    let input_stream = match CFileReader::new(input_stream) {
+        Ok(input) => input,
+        Err(_) => return CartUnpackResult::new_err(CART_ERROR_NULL_ARGUMENT),
+    };
     let input_file = std::io::BufReader::new(input_stream);
-    let output_file = CFileWriter { stream: output_stream };
+    let output_file = match CFileWriter::new(output_stream) {
+        Ok(out) => out,
+        Err(_) => return CartUnpackResult::new_err(CART_ERROR_NULL_ARGUMENT),
+    };
 
     // Process stream
     let result = unpack_stream(
@@ -450,6 +423,10 @@ pub extern "C" fn cart_unpack_data (
     input_buffer: *const c_char,
     input_buffer_size: usize
 ) -> CartUnpackResult {
+    if input_buffer == null() || input_buffer_size == 0 {
+        return CartUnpackResult::new_err(CART_ERROR_NULL_ARGUMENT)
+    }
+
     // cast c pointer to rust slice
     let input_data = unsafe {
         let input_buffer = input_buffer as *const u8;
@@ -496,7 +473,10 @@ pub extern "C" fn cart_is_stream_cart (
     stream: *mut libc::FILE,
 ) -> bool {
     // Open input file
-    let input_file = CFileReader::new(stream);
+    let input_file = match CFileReader::new(stream) {
+        Ok(file) => file,
+        Err(_) => return false,
+    };
     unpack_required_header(input_file, None).is_ok()
 }
 
@@ -506,6 +486,11 @@ pub extern "C" fn cart_is_data_cart (
     data: *const c_char,
     data_size: usize,
 ) -> bool {
+    // Refuse empty input
+    if data == null() || data_size == 0 {
+        return false
+    }
+
     // cast c pointer to rust slice
     let input_data = unsafe {
         let input_buffer = data as *const u8;
@@ -540,7 +525,10 @@ pub extern "C" fn cart_get_file_metadata_only(
 pub extern "C" fn cart_get_stream_metadata_only(
     stream: *mut libc::FILE
 ) -> CartUnpackResult {
-    let input_file = CFileReader::new(stream);
+    let input_file = match CFileReader::new(stream) {
+        Ok(file) => file,
+        Err(_) => return CartUnpackResult::new_err(CART_ERROR_NULL_ARGUMENT),
+    };
 
     match unpack_header(input_file, None) {
         Ok((_, header, _)) => CartUnpackResult::new_meta(header, None),
@@ -556,6 +544,10 @@ pub extern "C" fn cart_get_data_metadata_only(
     data: *const c_char,
     data_size: usize
 ) -> CartUnpackResult {
+    if data == null() || data_size == 0 {
+        return CartUnpackResult::new_err(CART_ERROR_NULL_ARGUMENT)
+    }
+
     let input_data = unsafe {
         let input_buffer = data as *const u8;
         std::slice::from_raw_parts(input_buffer, data_size)
@@ -612,5 +604,109 @@ pub extern "C" fn cart_free_pack_result(mut buf: CartPackResult) {
             buf.packed = null_mut();
             buf.packed_size = 0;
         }
+    }
+}
+
+
+#[cfg(test)]
+mod tests {
+    use std::ffi::CString;
+    use std::io::{Write, Read};
+    use std::ptr::{null, null_mut};
+
+    use libc::fopen;
+
+    use crate::{cart_pack_file_default, CART_NO_ERROR, cart_unpack_file, cart_free_unpack_result, cart_is_file_cart, cart_is_stream_cart, cart_is_data_cart, cart_unpack_stream, cart_unpack_data, cart_get_file_metadata_only, cart_get_stream_metadata_only, cart_get_data_metadata_only, cart_pack_stream_default, cart_pack_data_default};
+
+
+    #[test]
+    fn rount_trip_file() {
+        // prepare an input
+        let raw_data = std::include_bytes!("cart.rs");
+        let mut input = tempfile::NamedTempFile::new().unwrap();
+        input.write_all(raw_data).unwrap();
+        let input_path = CString::new(input.path().to_str().unwrap()).unwrap();
+
+        // Encode the data with cart
+        let buffer = tempfile::NamedTempFile::new().unwrap();
+        let buffer_path = CString::new(buffer.path().to_str().unwrap()).unwrap();
+        assert_eq!(cart_pack_file_default(input_path.as_ptr(), buffer_path.as_ptr(), null()), CART_NO_ERROR);
+
+        // Decode the cart data
+        let mut output = tempfile::NamedTempFile::new().unwrap();
+        let output_path = CString::new(output.path().to_str().unwrap()).unwrap();
+        let out = cart_unpack_file(buffer_path.as_ptr(), output_path.as_ptr());
+        assert_eq!(out.error, CART_NO_ERROR);
+        assert_eq!(out.header_json, null_mut());
+        assert_eq!(out.header_json_size, 0);
+        assert_eq!(out.body, null_mut());
+        assert_eq!(out.body_size, 0);
+        assert!(out.footer_json != null_mut());
+        assert!(out.footer_json_size > 0);
+
+        let mut output_data = vec![];
+        let bytes = output.as_file_mut().read_to_end(&mut output_data).unwrap();
+        assert_eq!(bytes, raw_data.len());
+        assert_eq!(output_data, raw_data);
+
+        cart_free_unpack_result(out);
+    }
+
+    #[test]
+    fn null_is_cart_calls() {
+        // All functions exported should be "safe" to call with null values in any field that
+        // take a pointer, it should never result in crashes, only error codes
+        let test_string = CString::new("test string").unwrap();
+
+        assert!(!cart_is_file_cart(null()));
+        assert!(!cart_is_stream_cart(null_mut()));
+        assert!(!cart_is_data_cart(null(), 0));
+        assert!(!cart_is_data_cart(null(), 1000000));
+        assert!(!cart_is_data_cart(test_string.as_ptr(), 0));
+    }
+
+    #[test]
+    fn null_unpack_calls() {
+        // All functions exported should be "safe" to call with null values in any field that
+        // take a pointer, it should never result in crashes, only error codes
+        let input = tempfile::NamedTempFile::new().unwrap();
+        let test_string = CString::new(input.path().to_str().unwrap()).unwrap();
+        let mode = CString::new("rw").unwrap();
+        let test_file = unsafe {fopen(test_string.as_ptr(), mode.as_ptr()) };
+
+        cart_unpack_file(null(), null());
+        cart_unpack_file(test_string.as_ptr(), null());
+        cart_unpack_file(null(), test_string.as_ptr());
+        cart_unpack_stream(null_mut(), null_mut());
+        cart_unpack_stream(test_file, null_mut());
+        cart_unpack_stream(null_mut(), test_file);
+        cart_unpack_data(null(), 0);
+        cart_unpack_data(null(), 10000);
+        cart_unpack_data(test_string.as_ptr(), 0);
+        cart_get_file_metadata_only(null());
+        cart_get_stream_metadata_only(null_mut());
+        cart_get_data_metadata_only(null(), 0);
+        cart_get_data_metadata_only(null(), 10000);
+        cart_get_data_metadata_only(test_string.as_ptr(), 0);
+    }
+
+    #[test]
+    fn null_pack_calls() {
+        // All functions exported should be "safe" to call with null values in any field that
+        // take a pointer, it should never result in crashes, only error codes
+        let input = tempfile::NamedTempFile::new().unwrap();
+        let test_string = CString::new(input.path().to_str().unwrap()).unwrap();
+        let mode = CString::new("rw").unwrap();
+        let test_file = unsafe {fopen(test_string.as_ptr(), mode.as_ptr()) };
+
+        cart_pack_file_default(null(), null(), null());
+        cart_pack_file_default(test_string.as_ptr(), null(), null());
+        cart_pack_file_default(null(), test_string.as_ptr(), null());
+        cart_pack_stream_default(null_mut(), null_mut(), null());
+        cart_pack_stream_default(test_file, null_mut(), null());
+        cart_pack_stream_default(null_mut(), test_file, null());
+        cart_pack_data_default(null(), 0, null());
+        cart_pack_data_default(null(), 119990, null());
+        cart_pack_data_default(test_string.as_ptr(), 0, null());
     }
 }

@@ -271,7 +271,7 @@ mod tests {
 
     use md5::Digest;
 
-    use crate::cart::JsonMap;
+    use crate::cart::{JsonMap, MANDATORY_HEADER_SIZE};
     use crate::digesters::default_digesters;
 
     use super::{pack_stream, unpack_stream};
@@ -376,5 +376,35 @@ mod tests {
         assert!(footer.is_none());
 
         assert_eq!(output, raw_data);
+    }
+
+    #[test]
+    fn incomplete_data() {
+        let raw_data = std::include_bytes!("cart.rs");
+        let input_cursor = std::io::Cursor::new(raw_data);
+
+        let mut buffer = tempfile::tempfile().unwrap();
+        pack_stream(input_cursor, &mut buffer, None, None, vec![], None).unwrap();
+        buffer.seek(SeekFrom::Start(0)).unwrap();
+        let len = buffer.metadata().unwrap().len();
+
+        // Truncate the buffer part way through the footer
+        buffer.set_len(len - 2).unwrap();
+
+        // make sure the unpack call returns an error rather than calling panic
+        let mut output = vec![];
+        assert!(unpack_stream(&mut buffer, &mut output, None).is_err());
+        buffer.seek(SeekFrom::Start(0)).unwrap();
+
+        // Truncate the buffer half way through
+        buffer.set_len(len/2).unwrap();
+
+        // make sure the unpack call returns an error rather than calling panic
+        assert!(unpack_stream(&mut buffer, &mut output, None).is_err());
+        buffer.seek(SeekFrom::Start(0)).unwrap();
+
+        // Truncate even the header
+        buffer.set_len(MANDATORY_HEADER_SIZE as u64 - 1).unwrap();
+        assert!(unpack_stream(&mut buffer, &mut output, None).is_err());
     }
 }
