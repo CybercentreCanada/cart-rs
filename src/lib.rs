@@ -640,9 +640,13 @@ mod tests {
     use std::io::{Write, Read};
     use std::ptr::{null, null_mut};
 
+    #[cfg(unix)]
     use libc::fopen;
 
-    use crate::{cart_pack_file_default, CART_NO_ERROR, cart_unpack_file, cart_free_unpack_result, cart_is_file_cart, cart_is_stream_cart, cart_is_data_cart, cart_unpack_stream, cart_unpack_data, cart_get_file_metadata_only, cart_get_stream_metadata_only, cart_get_data_metadata_only, cart_pack_stream_default, cart_pack_data_default, cart_free_pack_result};
+    #[cfg(unix)]
+    use crate::cart_unpack_stream;
+
+    use crate::{cart_pack_file_default, CART_NO_ERROR, cart_unpack_file, cart_free_unpack_result, cart_is_file_cart, cart_is_stream_cart, cart_is_data_cart, cart_unpack_data, cart_get_file_metadata_only, cart_get_stream_metadata_only, cart_get_data_metadata_only, cart_pack_stream_default, cart_pack_data_default, cart_free_pack_result};
 
 
     #[test]
@@ -792,13 +796,13 @@ mod tests {
         assert!(!cart_is_data_cart(test_string.as_ptr(), 0));
     }
 
+    #[cfg(unix)]
     #[test]
     fn null_unpack_calls() {
         // All functions exported should be "safe" to call with null values in any field that
         // take a pointer, it should never result in crashes, only error codes
         let input = tempfile::NamedTempFile::new().unwrap();
-        let input_path = input.path().canonicalize().unwrap();
-        let test_string = CString::new(input_path.to_str().unwrap()).unwrap();
+        let test_string = CString::new(input.path().to_str().unwrap()).unwrap();
         let mode = CString::new("rw").unwrap();
         let test_file = unsafe {fopen(test_string.as_ptr(), mode.as_ptr()) };
 
@@ -871,9 +875,6 @@ mod tests {
         // All functions exported should be "safe" to call with null values in any field that
         // take a pointer, it should never result in crashes, only error codes
         let input = tempfile::NamedTempFile::new().unwrap();
-        println!("{}", input.path().to_str().unwrap());
-        println!("{}", input.path().canonicalize().unwrap().to_str().unwrap());
-
         let test_string = CString::new(input.path().to_str().unwrap()).unwrap();
 
         cart_pack_data_default(null(), 0, null());
