@@ -690,6 +690,7 @@ mod tests {
         cart_free_unpack_result(out);
     }
 
+    #[cfg(unix)]
     #[test]
     fn round_trip_stream() {
         // prepare an input
