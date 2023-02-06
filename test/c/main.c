@@ -16,12 +16,12 @@ int main(char** argv, int argn) {
     // Test the file base input/ouput
 
     // Encode file
-    if(CART_NO_ERROR != cart_pack_file_default("./cart.h", "./buffer.temp", "{\"hello\": \"world\"}")) {
+    if(CART_NO_ERROR != cart_pack_file_default("./cart.h", "./cart.h.cart", "{\"hello\": \"world\"}")) {
         return 1;
     }
 
     // Decode file
-    CartUnpackResult result = cart_unpack_file("./buffer.temp", "./buffer.out");
+    CartUnpackResult result = cart_unpack_file("./cart.h.cart", "./cart_copy.h");
     if(result.error != CART_NO_ERROR) {
         return 2;
     }
@@ -29,7 +29,7 @@ int main(char** argv, int argn) {
     // printf("%li %li %li\n", result.body_size, result.header_json_size, result.footer_json_size);
     // printf("%d %d %d\n", result.body != 0, result.header_json != 0, result.footer_json != 0);
 
-    FILE * output_file = fopen("./buffer.out", "rb");
+    FILE * output_file = fopen("./cart_copy.h", "rb");
     char* output = malloc(10 << 20);
     size_t output_size = fread(output, 1, 10 << 20, output_file);
     output[output_size] = '\0';

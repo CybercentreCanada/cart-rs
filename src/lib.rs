@@ -1,13 +1,39 @@
-///
-/// The CaRT file format is used to store/transfer malware and it's associated metadata.
-/// It neuters the malware so it cannot be executed and encrypts it so anti-virus software
-/// cannot flag the CaRT file as malware.
-///
-/// The functions, structs, and constants in the root of the package prefixed with `cart`
-/// are all exported to build a c library.
-///
-/// An interfaces more suitable for calling from rust is in the [cart] module.
-///
+//! The CaRT file format is used to store/transfer malware and it's associated metadata.
+//!
+//! It neuters the malware so it cannot be executed and encrypts it so anti-virus software
+//! cannot flag the CaRT file as malware.
+//!
+//! The functions, structs, and constants in the root of the package prefixed with `cart`
+//! are all exported to build a c library.
+//!
+//! ```c
+//! #include "cart.h"
+//! #include <string.h>
+//!
+//! int main(char** argv, int argn) {
+//!     // A file to encode
+//!     char* input_file = "./cart.h";
+//!     char* metadata_json = "{\"hello\": \"world\"}";
+//!     char* carted_file = "./cart.h.cart";
+//!     char* output_file = "./cart_copy.h";
+//!
+//!     // Encode file
+//!     if(CART_NO_ERROR != cart_pack_file_default(input_file, carted_file, metadata_json)) {
+//!         return 1;
+//!     }
+//!
+//!     // Decode file
+//!     CartUnpackResult result = cart_unpack_file(carted_file, output_file);
+//!     if(result.error != CART_NO_ERROR) {
+//!         return 2;
+//!     }
+//!
+//!     cart_free_unpack_result(result);
+//! }
+//! ```
+//!
+//! An interfaces more suitable for calling from rust is in the [cart] module.
+//!
 
 use std::ffi::c_char;
 use std::ptr::{null, null_mut};

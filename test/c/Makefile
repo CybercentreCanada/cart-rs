@@ -14,4 +14,4 @@ main: main.c cart.h libcart.a
 	gcc -o ./main main.c libcart.a -lpthread
 
 clean:
-	rm -f cart.h ./main ./libcart.a ./buffer.temp ./buffer.out
+	rm -f cart.h ./main ./libcart.a ./cart.h.cart ./cart_copy.h
