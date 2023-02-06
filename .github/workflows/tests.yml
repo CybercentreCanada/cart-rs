@@ -40,7 +40,7 @@ jobs:
       - uses: dtolnay/rust-toolchain@master
         with:
           toolchain: ${{matrix.rust}}
-      - run: cargo test --no-fail-fast
+      - run: cargo test --no-fail-fast -- --nocapture
 
   compare:
     name: Compare to python
