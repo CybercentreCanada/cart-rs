@@ -839,20 +839,12 @@ mod tests {
 
     #[test]
     fn null_pack_stream_calls_0() {
-        // All functions exported should be "safe" to call with null values in any field that
-        // take a pointer, it should never result in crashes, only error codes
-        // let input = tempfile::NamedTempFile::new().unwrap();
-        // let test_string = CString::new(input.path().to_str().unwrap()).unwrap();
-        // let mode = CString::new("rwb").unwrap();
-        // let test_file = unsafe {fopen(test_string.as_ptr(), mode.as_ptr()) };
-
         cart_pack_stream_default(null_mut(), null_mut(), null());
     }
 
+    #[cfg(unix)]
     #[test]
     fn null_pack_stream_calls_1() {
-        // All functions exported should be "safe" to call with null values in any field that
-        // take a pointer, it should never result in crashes, only error codes
         let input = tempfile::NamedTempFile::new().unwrap();
         let test_string = CString::new(input.path().to_str().unwrap()).unwrap();
         let mode = CString::new("rwb").unwrap();
@@ -863,8 +855,6 @@ mod tests {
 
     #[test]
     fn null_pack_stream_calls_2() {
-        // All functions exported should be "safe" to call with null values in any field that
-        // take a pointer, it should never result in crashes, only error codes
         let input = tempfile::NamedTempFile::new().unwrap();
         let test_string = CString::new(input.path().to_str().unwrap()).unwrap();
         let mode = CString::new("rwb").unwrap();
