@@ -826,7 +826,19 @@ mod tests {
     }
 
     #[test]
-    fn null_pack_calls() {
+    fn null_pack_file_calls() {
+        // All functions exported should be "safe" to call with null values in any field that
+        // take a pointer, it should never result in crashes, only error codes
+        let input = tempfile::NamedTempFile::new().unwrap();
+        let test_string = CString::new(input.path().to_str().unwrap()).unwrap();
+
+        cart_pack_file_default(null(), null(), null());
+        cart_pack_file_default(test_string.as_ptr(), null(), null());
+        cart_pack_file_default(null(), test_string.as_ptr(), null());
+    }
+
+    #[test]
+    fn null_pack_stream_calls() {
         // All functions exported should be "safe" to call with null values in any field that
         // take a pointer, it should never result in crashes, only error codes
         let input = tempfile::NamedTempFile::new().unwrap();
@@ -834,14 +846,21 @@ mod tests {
         let mode = CString::new("rw").unwrap();
         let test_file = unsafe {fopen(test_string.as_ptr(), mode.as_ptr()) };
 
-        cart_pack_file_default(null(), null(), null());
-        cart_pack_file_default(test_string.as_ptr(), null(), null());
-        cart_pack_file_default(null(), test_string.as_ptr(), null());
         cart_pack_stream_default(null_mut(), null_mut(), null());
         cart_pack_stream_default(test_file, null_mut(), null());
         cart_pack_stream_default(null_mut(), test_file, null());
+    }
+
+    #[test]
+    fn null_pack_data_calls() {
+        // All functions exported should be "safe" to call with null values in any field that
+        // take a pointer, it should never result in crashes, only error codes
+        let input = tempfile::NamedTempFile::new().unwrap();
+        let test_string = CString::new(input.path().to_str().unwrap()).unwrap();
+
         cart_pack_data_default(null(), 0, null());
         cart_pack_data_default(null(), 119990, null());
         cart_pack_data_default(test_string.as_ptr(), 0, null());
     }
+
 }
