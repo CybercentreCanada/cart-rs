@@ -809,6 +809,15 @@ mod tests {
         cart_unpack_data(null(), 0);
         cart_unpack_data(null(), 10000);
         cart_unpack_data(test_string.as_ptr(), 0);
+    }
+
+    #[test]
+    fn null_get_metadata_calls() {
+        // All functions exported should be "safe" to call with null values in any field that
+        // take a pointer, it should never result in crashes, only error codes
+        let input = tempfile::NamedTempFile::new().unwrap();
+        let test_string = CString::new(input.path().to_str().unwrap()).unwrap();
+
         cart_get_file_metadata_only(null());
         cart_get_stream_metadata_only(null_mut());
         cart_get_data_metadata_only(null(), 0);
