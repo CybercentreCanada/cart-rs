@@ -853,6 +853,7 @@ mod tests {
         cart_pack_stream_default(test_file, null_mut(), null());
     }
 
+    #[cfg(unix)]
     #[test]
     fn null_pack_stream_calls_2() {
         let input = tempfile::NamedTempFile::new().unwrap();
