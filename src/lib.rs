@@ -792,13 +792,13 @@ mod tests {
         assert!(!cart_is_data_cart(test_string.as_ptr(), 0));
     }
 
-    #[cfg(unix)]
     #[test]
     fn null_unpack_calls() {
         // All functions exported should be "safe" to call with null values in any field that
         // take a pointer, it should never result in crashes, only error codes
         let input = tempfile::NamedTempFile::new().unwrap();
         let test_string = CString::new(input.path().to_str().unwrap()).unwrap();
+        println!("{}", input.path().to_str().unwrap());
         let mode = CString::new("rw").unwrap();
         let test_file = unsafe {fopen(test_string.as_ptr(), mode.as_ptr()) };
 
