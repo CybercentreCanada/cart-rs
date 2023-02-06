@@ -798,6 +798,8 @@ mod tests {
         // take a pointer, it should never result in crashes, only error codes
         let input = tempfile::NamedTempFile::new().unwrap();
         println!("{}", input.path().to_str().unwrap());
+        println!("{}", input.path().canonicalize().unwrap().to_str().unwrap());
+
         let test_string = CString::new(input.path().to_str().unwrap()).unwrap();
         let mode = CString::new("rw").unwrap();
         let test_file = unsafe {fopen(test_string.as_ptr(), mode.as_ptr()) };
@@ -872,6 +874,8 @@ mod tests {
         // take a pointer, it should never result in crashes, only error codes
         let input = tempfile::NamedTempFile::new().unwrap();
         println!("{}", input.path().to_str().unwrap());
+        println!("{}", input.path().canonicalize().unwrap().to_str().unwrap());
+
         let test_string = CString::new(input.path().to_str().unwrap()).unwrap();
 
         cart_pack_data_default(null(), 0, null());
