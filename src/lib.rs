@@ -791,6 +791,7 @@ mod tests {
         assert!(!cart_is_data_cart(test_string.as_ptr(), 0));
     }
 
+    #[cfg(unix)]
     #[test]
     fn null_unpack_calls() {
         // All functions exported should be "safe" to call with null values in any field that
