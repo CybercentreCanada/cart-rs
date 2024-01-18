@@ -2,7 +2,6 @@
 /// The [Digester] trait wraps hashes and counter objects to produce hashes or summaries
 /// to include in a cart file footer.
 ///
-
 use md5::Digest;
 
 pub trait Digester {
@@ -16,21 +15,21 @@ pub trait Digester {
 /// This includes the md5, sha1, sha256 hashes, and the length of the file.
 pub fn default_digesters() -> Vec<Box<dyn Digester>> {
     vec![
-        Box::new(MD5Digest::new()),
-        Box::new(SHA1Digest::new()),
-        Box::new(SHA256Digest::new()),
-        Box::new(LengthDigest::new()),
+        Box::<MD5Digest>::default(),
+        Box::<SHA1Digest>::default(),
+        Box::<SHA256Digest>::default(),
+        Box::<LengthDigest>::default(),
     ]
 }
 
 pub struct MD5Digest {
-    hasher: md5::Md5
+    hasher: md5::Md5,
 }
 
-impl MD5Digest {
-    pub fn new() -> Self {
+impl Default for MD5Digest {
+    fn default() -> Self {
         Self {
-            hasher: md5::Md5::new()
+            hasher: md5::Md5::new(),
         }
     }
 }
@@ -38,11 +37,11 @@ impl MD5Digest {
 impl Digester for MD5Digest {
     fn update(&mut self, data: &[u8]) -> anyhow::Result<()> {
         self.hasher.update(data);
-        return Ok(())
+        Ok(())
     }
 
     fn name(&self) -> String {
-        return "md5".to_owned()
+        "md5".into()
     }
 
     fn finish(&mut self) -> String {
@@ -51,13 +50,13 @@ impl Digester for MD5Digest {
 }
 
 pub struct SHA1Digest {
-    hasher: sha1::Sha1
+    hasher: sha1::Sha1,
 }
 
-impl SHA1Digest {
-    pub fn new() -> Self {
+impl Default for SHA1Digest {
+    fn default() -> Self {
         Self {
-            hasher: sha1::Sha1::new()
+            hasher: sha1::Sha1::new(),
         }
     }
 }
@@ -65,11 +64,11 @@ impl SHA1Digest {
 impl Digester for SHA1Digest {
     fn update(&mut self, data: &[u8]) -> anyhow::Result<()> {
         self.hasher.update(data);
-        return Ok(())
+        Ok(())
     }
 
     fn name(&self) -> String {
-        return "sha1".to_owned()
+        "sha1".into()
     }
 
     fn finish(&mut self) -> String {
@@ -78,13 +77,13 @@ impl Digester for SHA1Digest {
 }
 
 pub struct SHA256Digest {
-    hasher: sha2::Sha256
+    hasher: sha2::Sha256,
 }
 
-impl SHA256Digest {
-    pub fn new() -> Self {
+impl Default for SHA256Digest {
+    fn default() -> Self {
         Self {
-            hasher: sha2::Sha256::new()
+            hasher: sha2::Sha256::new(),
         }
     }
 }
@@ -92,11 +91,11 @@ impl SHA256Digest {
 impl Digester for SHA256Digest {
     fn update(&mut self, data: &[u8]) -> anyhow::Result<()> {
         self.hasher.update(data);
-        return Ok(())
+        Ok(())
     }
 
     fn name(&self) -> String {
-        return "sha256".to_owned()
+        "sha256".into()
     }
 
     fn finish(&mut self) -> String {
@@ -104,26 +103,19 @@ impl Digester for SHA256Digest {
     }
 }
 
+#[derive(Default)]
 pub struct LengthDigest {
-    counter: u64
-}
-
-impl LengthDigest {
-    pub fn new() -> Self {
-        Self {
-            counter: 0
-        }
-    }
+    counter: u64,
 }
 
 impl Digester for LengthDigest {
     fn update(&mut self, data: &[u8]) -> anyhow::Result<()> {
         self.counter += data.len() as u64;
-        return Ok(())
+        Ok(())
     }
 
     fn name(&self) -> String {
-        return "length".to_owned()
+        "length".into()
     }
 
     fn finish(&mut self) -> String {
