@@ -407,4 +407,38 @@ mod tests {
         buffer.set_len(MANDATORY_HEADER_SIZE as u64 - 1).unwrap();
         assert!(unpack_stream(&mut buffer, &mut output, None).is_err());
     }
+
+    #[test]
+    fn conflicting_footer_data() {
+        let raw_data = std::include_bytes!("cart.rs");
+        let mut output = vec![];
+
+        let mut output_metadata = super::JsonMap::new();
+        output_metadata.insert("md5".to_owned(), "report.md5".into()); // String intod )o `serde_json::Value`
+        output_metadata.insert("sha1".to_owned(), "report.sha1".into());
+        output_metadata.insert("sha256".to_owned(), "report.sha256".into());
+        output_metadata.insert("sha384".to_owned(), "report.sha384".into());
+        output_metadata.insert("sha512".to_owned(), "report.sha512".into());
+        output_metadata.insert("entropy".to_owned(), serde_json::Value::from(5.0f32)); // `f32`
+        output_metadata.insert("file".to_owned(), "filecmd".into());
+
+        pack_stream(
+            std::io::Cursor::new(raw_data), // Cursor wrapping the vec of data
+            &mut output, // Cursor wrapping empty vec
+            None, // Optional header, tried this for the metadata
+            Some(output_metadata), // Optional footer
+            default_digesters(),
+            None, // Rc4 key override, not used
+        ).unwrap();
+
+        let mut unpacked = vec![];
+
+        let (header, footer) = unpack_stream(std::io::Cursor::new(output), &mut unpacked, None).unwrap();
+
+        assert!(header.is_none()); // nothing should be added
+        assert_eq!(unpacked, raw_data); // data should be preserved
+        let footer = footer.unwrap(); // there must be a footer
+        assert_ne!(footer["md5"], "report.md5"); // this should be overwritten with the real md5
+        assert_eq!(footer["entropy"], serde_json::json!(5.0)); // this won't be effected by the digester
+    }
 }
