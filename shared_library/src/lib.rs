@@ -87,17 +87,12 @@
 use std::ffi::c_char;
 use std::ptr::{null, null_mut};
 
-use cart::{pack_stream, unpack_stream};
-use cart::{unpack_header, JsonMap};
+use cart_container::{unpack_stream, pack_stream, JsonMap};
+use cart_container::digesters::default_digesters;
+use cart_container::cart::{unpack_header, unpack_required_header};
 use cutil::{CFileReader, CFileWriter};
-use digesters::default_digesters;
 
-use crate::cart::unpack_required_header;
-
-pub mod cart;
-mod cipher;
 mod cutil;
-pub mod digesters;
 
 /// Error code set when a call completes without errors
 pub const CART_NO_ERROR: u32 = 0;
@@ -684,7 +679,7 @@ mod tests {
         let input_json = CString::new(input_json).unwrap();
 
         // prepare an input
-        let raw_data = std::include_bytes!("cart.rs");
+        let raw_data = std::include_bytes!("lib.rs");
         let mut input = tempfile::NamedTempFile::new().unwrap();
         input.write_all(raw_data).unwrap();
         let input_path = CString::new(input.path().to_str().unwrap()).unwrap();
@@ -734,7 +729,7 @@ mod tests {
     #[test]
     fn round_trip_stream() {
         // prepare an input
-        let raw_data = std::include_bytes!("cart.rs");
+        let raw_data = std::include_bytes!("lib.rs");
         let mut input = tempfile::NamedTempFile::new().unwrap();
         input.write_all(raw_data).unwrap();
         let input_path = CString::new(input.path().to_str().unwrap()).unwrap();
@@ -780,7 +775,7 @@ mod tests {
     #[test]
     fn round_trip_buffer() {
         // prepare an input
-        let raw_data = std::include_bytes!("cart.rs");
+        let raw_data = std::include_bytes!("lib.rs");
 
         // Encode the data with cart
         let packed =
@@ -811,7 +806,7 @@ mod tests {
     #[test]
     fn bad_input_buffer() {
         // prepare an input
-        let raw_data = std::include_bytes!("cart.rs");
+        let raw_data = std::include_bytes!("lib.rs");
         let bad_metadata = r#"{"name": "snake}"#;
         let bad_metadata = CString::new(bad_metadata).unwrap();
 
