@@ -3,6 +3,7 @@
 //! This module also makes public header processing functions to allow parsing of only 
 //! header data without fully unpacking the file data.
 //! 
+#![allow(clippy::similar_names)]
 
 use std::io::{Write, Read};
 use bytes::{BufMut, Buf};
@@ -27,6 +28,11 @@ const RESERVED: u64 = 0;
 
 
 /// Encoding function for cart format.
+/// 
+/// # Errors
+/// - io operations on the input or output stream
+/// - metadata that is not json serializable
+/// - badly formatted rc4 keys
 pub fn pack_stream<IN: Read, OUT: Write>(mut istream: IN, mut ostream: OUT,
     optional_header: Option<JsonMap>, optional_footer: Option<JsonMap>,
     mut digesters: Vec<Box<dyn Digester>>, rc4_key_override: Option<Vec<u8>>) -> Result<()>
@@ -96,7 +102,7 @@ pub fn pack_stream<IN: Read, OUT: Write>(mut istream: IN, mut ostream: OUT,
         }
 
         // update the various digests with this block
-        for digest in digesters.iter_mut() {
+        for digest in &mut digesters {
             digest.update(&buffer[0..bytes_read]);
         }
 
@@ -156,6 +162,10 @@ pub fn pack_stream<IN: Read, OUT: Write>(mut istream: IN, mut ostream: OUT,
 /// This returns the rc4 key, the size of the optional header, and how many bytes have been read.
 /// This method is only useful if you want to peek at the header information without parsing the 
 /// entire file.
+/// 
+/// # Errors
+/// - missing or malformed header data
+/// - read operations on the input stream failing
 pub fn unpack_required_header<IN: Read>(mut istream: IN, rc4_key_override: Option<Vec<u8>>)
     -> Result<(Vec<u8>, u64, u64)>
 {
@@ -196,6 +206,11 @@ pub fn unpack_required_header<IN: Read>(mut istream: IN, rc4_key_override: Optio
 
 /// Decode and check the entire header, including the optional metadata
 /// This method is only useful if you want to peek at the header information without parsing the entire file.
+/// 
+/// # Errors
+/// - missing or malformed header data
+/// - read operations on the input stream failing
+/// - header metadata being too large for memory
 pub fn unpack_header<IN: Read>(mut istream: IN, rc4_key_override: Option<Vec<u8>>)
     -> Result<(Vec<u8>, Option<JsonMap>, u64)>
 {
@@ -203,7 +218,7 @@ pub fn unpack_header<IN: Read>(mut istream: IN, rc4_key_override: Option<Vec<u8>
     // Read and unpack any optional header.
     let mut optional_header = None;
     if opt_header_len > 0 {
-        let mut buffer = vec![0u8; opt_header_len as usize];
+        let mut buffer = vec![0u8; usize::try_from(opt_header_len)?];
         istream.read_exact(&mut buffer)?;
         pos += opt_header_len;
 
@@ -215,6 +230,13 @@ pub fn unpack_header<IN: Read>(mut istream: IN, rc4_key_override: Option<Vec<u8>
 }
 
 /// Decode function for cart formatted data.
+/// 
+/// # Errors
+/// - missing or malformed header data
+/// - io operations on the input or output stream failing
+/// - metadata being too large for memory
+/// - corrupted stream content
+/// - badly formatted rc4 keys
 pub fn unpack_stream<IN: Read, OUT: Write>(mut istream: IN, mut ostream: OUT,
     rc4_key_override: Option<Vec<u8>>) -> Result<(Option<JsonMap>, Option<JsonMap>)>
 {
@@ -254,7 +276,7 @@ pub fn unpack_stream<IN: Read, OUT: Write>(mut istream: IN, mut ostream: OUT,
         }
     }
     let _opt_footer_pos = mandatory_footer_raw.get_u64_le();
-    let opt_footer_len = mandatory_footer_raw.get_u64_le() as usize;
+    let opt_footer_len = usize::try_from(mandatory_footer_raw.get_u64_le())?;
 
     let opt_footer_offset = footer_offset - opt_footer_len;
 

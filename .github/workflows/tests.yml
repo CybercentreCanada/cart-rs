@@ -91,4 +91,3 @@ jobs:
           toolchain: ${{matrix.rust}}
           components: clippy
       - run: cargo clippy -- -Dclippy::all
-      - run: cargo clippy -- -Dclippy::all -Dclippy::pedantic

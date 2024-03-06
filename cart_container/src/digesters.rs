@@ -19,6 +19,7 @@ pub trait Digester {
 /// Generate the default set of digests taken for cart files.
 ///
 /// This includes the md5, sha1, sha256 hashes, and the length of the file.
+#[must_use]
 pub fn default_digesters() -> Vec<Box<dyn Digester>> {
     vec![
         Box::new(MD5Digest::new()),
@@ -30,6 +31,7 @@ pub fn default_digesters() -> Vec<Box<dyn Digester>> {
 
 /// Calculates the MD5 of the file body
 #[derive(Default)]
+#[must_use]
 pub struct MD5Digest {
     hasher: md5::Md5
 }
@@ -57,6 +59,7 @@ impl Digester for MD5Digest {
 
 /// Calculates the SHA1 of the file body
 #[derive(Default)]
+#[must_use]
 pub struct SHA1Digest {
     hasher: sha1::Sha1
 }
@@ -84,6 +87,7 @@ impl Digester for SHA1Digest {
 
 /// Calculates the SHA256 of the file body
 #[derive(Default)]
+#[must_use]
 pub struct SHA256Digest {
     hasher: sha2::Sha256
 }
@@ -111,6 +115,7 @@ impl Digester for SHA256Digest {
 
 /// Accumulates the length of the file body
 #[derive(Default)]
+#[must_use]
 pub struct LengthDigest {
     counter: u64
 }

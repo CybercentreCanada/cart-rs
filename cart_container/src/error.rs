@@ -19,6 +19,8 @@ pub enum CartErrorKind {
     HeaderCorrupt,
     /// Likely data corruption issue
     FooterCorrupt,
+    /// A size wants more space than the word size of the current environment allows
+    MetadataSize,
     /// Data corruption or parameter issue
     MetadataEncoding(serde_json::Error),
     /// IO could be anything related to the input or output streams
@@ -35,6 +37,7 @@ impl std::fmt::Display for CartError {
             FooterEncoding => f.write_str("The footer data could not be encoded."),
             HeaderCorrupt => f.write_str("The manditory header data was corrupt."),
             FooterCorrupt => f.write_str("The manditory footer data was corrupt."),
+            MetadataSize => f.write_str("Metadata decoding wants more memory than the system can provide."),
             MetadataEncoding(err) => f.write_fmt(format_args!("Header or footer metadata encoding error: {err}")),
             IO(err) => f.write_fmt(format_args!("An error occurred during an IO operation: {err}")),
         }
@@ -74,5 +77,9 @@ impl From<serde_json::Error> for CartError {
     fn from(value: serde_json::Error) -> Self { Self(Box::new(CartErrorKind::MetadataEncoding(value))) }
 }
 
-/// Alias for result that always uses CartError
+impl From<std::num::TryFromIntError> for CartError {
+    fn from(_: std::num::TryFromIntError) -> Self { Self(Box::new(CartErrorKind::MetadataSize)) }
+}
+
+/// Alias for result that always uses ``CartError``
 pub type Result<T> = std::result::Result<T, CartError>;
