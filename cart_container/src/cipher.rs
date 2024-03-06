@@ -57,8 +57,9 @@ impl<IN: Read> CipherPassthroughIn<IN> {
 
     // Extract the last chunk read from the stream. This can be used to
     // recover less-than-chunk sized footer data that was appended.
-    pub fn last_chunk(self) -> Vec<u8> {
-        self.buffer
+    pub fn last_chunk(mut self) -> Result<Vec<u8>, std::io::Error> {
+        self.stream.read_to_end(&mut self.buffer)?;
+        Ok(self.buffer)
     }
 }
 

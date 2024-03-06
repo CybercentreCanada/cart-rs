@@ -79,9 +79,7 @@
     unused_crate_dependencies, noop_method_call, single_use_lifetimes, trivial_casts,
     unused_lifetimes, nonstandard_style, variant_size_differences)]
 #![deny(keyword_idents)]
-// #![warn(clippy::missing_docs_in_private_items)]
 #![allow(clippy::needless_return)]
-// #![allow(clippy::needless_return, clippy::while_let_on_iterator, clippy::collapsible_else_if)]
 
 
 use std::ffi::c_char;
@@ -747,6 +745,8 @@ mod tests {
         );
         let buffer_file = unsafe { fopen(buffer_path.as_ptr(), mode_rw.as_ptr()) };
         assert!(cart_is_stream_cart(buffer_file));
+
+        
 
         // Decode the cart data
         let buffer_file = unsafe { fopen(buffer_path.as_ptr(), mode_rw.as_ptr()) };

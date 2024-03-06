@@ -57,8 +57,7 @@ pub fn pack_stream<IN: Read, OUT: Write>(mut istream: IN, mut ostream: OUT,
     // Write the mandatory header
     ostream.write_all(&{
         // Build the header in a buffer first
-        let mut header = vec![];
-        header.reserve(MANDATORY_HEADER_SIZE);
+        let mut header = Vec::with_capacity(MANDATORY_HEADER_SIZE);
         header.put_slice(HEADER_MAGIC); // MAGIC
         header.put_i16_le(MAJOR_VERSION); // MAJOR VERSION
         header.put_u64_le(RESERVED); // Reserved
@@ -134,10 +133,9 @@ pub fn pack_stream<IN: Read, OUT: Write>(mut istream: IN, mut ostream: OUT,
     };
 
     // Write the mandatory footer
-    ostream.write_all(&{
+    {
         // Build the header in a buffer first
-        let mut footer = vec![];
-        footer.reserve(MANDATORY_FOOTER_SIZE);
+        let mut footer = Vec::with_capacity(MANDATORY_FOOTER_SIZE);
         footer.put_slice(FOOTER_MAGIC); // MAGIC
         footer.put_u64_le(RESERVED); // Reserved
         footer.put_u64_le(footer_pos);
@@ -147,10 +145,10 @@ pub fn pack_stream<IN: Read, OUT: Write>(mut istream: IN, mut ostream: OUT,
         if footer.len() != MANDATORY_FOOTER_SIZE {
             return Err(CartError::footer_encoding())
         }
-        footer
-    })?;
+        ostream.write_all(&footer)?;
+    }    
     ostream.flush()?;
-    return Ok(())
+    Ok(())
 }
 
 /// Decode and check only the mandatory parts of the header
@@ -241,12 +239,11 @@ pub fn unpack_stream<IN: Read, OUT: Write>(mut istream: IN, mut ostream: OUT,
         }
         ostream.write_all(&buffer[0..size])?;
     }
-    let last_chunk = bz.into_inner().last_chunk();
+    let last_chunk = bz.into_inner().last_chunk()?;
 
     // unused data will be the
     let footer_offset = last_chunk.len() - MANDATORY_FOOTER_SIZE;
     let mut mandatory_footer_raw = bytes::Bytes::copy_from_slice(&last_chunk[footer_offset..]);
-
     {
         if !mandatory_footer_raw.starts_with(FOOTER_MAGIC) {
             return Err(CartError::footer_corrupt());
@@ -269,7 +266,7 @@ pub fn unpack_stream<IN: Read, OUT: Write>(mut istream: IN, mut ostream: OUT,
         optional_footer = Some(serde_json::from_slice(&optional_crypt)?);
     }
     ostream.flush()?;
-    return Ok((optional_header, optional_footer))
+    Ok((optional_header, optional_footer))
 }
 
 
@@ -279,7 +276,7 @@ mod tests {
 
     use md5::Digest;
 
-    use crate::cart::{JsonMap, MANDATORY_HEADER_SIZE};
+    use crate::cart::{JsonMap, BLOCK_SIZE, MANDATORY_HEADER_SIZE};
     use crate::digesters::default_digesters;
 
     use super::{pack_stream, unpack_stream};
@@ -304,7 +301,14 @@ mod tests {
 
     #[test]
     fn round_trip() {
+        // make sure our test data is several blocks long
         let raw_data = std::include_bytes!("cart.rs");
+        let mut data = vec![];
+        while data.len() <= BLOCK_SIZE * 2 {
+            data.extend(raw_data);
+        }
+        let raw_data = data.as_slice();
+
         let input_cursor = std::io::Cursor::new(raw_data);
 
         let mut buffer = tempfile::tempfile().unwrap();
@@ -343,6 +347,49 @@ mod tests {
         // Check payload
         assert_eq!(output, raw_data);
     }
+
+    #[test]
+    fn round_trip_single_block() {
+        let raw_data = b"A small ammount of data, such that it all falls in a single block.";
+        let input_cursor = std::io::Cursor::new(raw_data);
+
+        let mut buffer = tempfile::tempfile().unwrap();
+
+        let mut original_header = JsonMap::new();
+        original_header.insert("abc".to_owned(), serde_json::to_value("123").unwrap());
+
+        let mut original_footer = JsonMap::new();
+        original_footer.insert("xyz".to_owned(), serde_json::to_value("999999999999999").unwrap());
+
+        pack_stream(
+            input_cursor,
+            &mut buffer,
+            Some(original_header.clone()),
+            Some(original_footer.clone()),
+            default_digesters(),
+            None
+        ).unwrap();
+        buffer.seek(SeekFrom::Start(0)).unwrap();
+
+        let mut output = vec![];
+        let (header, footer) = unpack_stream(buffer, &mut output, None).unwrap();
+
+        // Check header
+        let header = header.unwrap();
+        assert_eq!(header, original_header);
+
+        // Check footer
+        let footer = footer.unwrap();
+        assert_eq!(footer.get("length"), Some(&serde_json::to_value(raw_data.len().to_string()).unwrap()));
+        let mut hasher = sha2::Sha256::new();
+        hasher.update(raw_data);
+        assert_eq!(footer.get("sha256"), Some(&serde_json::to_value(format!("{:x}", hasher.finalize())).unwrap()));
+        assert_eq!(footer.get("xyz"), Some(&serde_json::to_value("999999999999999").unwrap()));
+
+        // Check payload
+        assert_eq!(output, raw_data);
+    }
+
 
     #[test]
     fn empty() {

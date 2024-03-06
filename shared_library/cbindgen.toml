@@ -1,0 +1,11 @@
+
+
+language = "C"
+sys_includes = ["stdio.h"]
+pragma_once = true
+cpp_compat = true
+
+[export]
+
+exclude = ["Rc4", "Map"]
+item_types = ["functions", "structs", "constants"]

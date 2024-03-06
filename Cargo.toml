@@ -3,3 +3,8 @@ members = [
     "cart_container",
     "shared_library"
 ]
+
+resolver = "2"
+
+[profile.release]
+lto = true
