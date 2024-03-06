@@ -83,7 +83,7 @@
 
 
 use std::ffi::c_char;
-use std::ptr::{null, null_mut};
+use std::ptr::null_mut;
 
 use cart_container::{unpack_stream, pack_stream, JsonMap};
 use cart_container::digesters::default_digesters;
@@ -110,7 +110,7 @@ pub const CART_ERROR_PROCESSING: u32 = 6;
 /// Helper function to convert a c string with a path into a file object
 fn _open(path: *const c_char, read: bool) -> Result<std::fs::File, u32> {
     // Check for null values
-    if path == null() {
+    if path.is_null() {
         return Err(CART_ERROR_BAD_ARGUMENT_STR);
     }
 
@@ -143,7 +143,7 @@ fn _open(path: *const c_char, read: bool) -> Result<std::fs::File, u32> {
 
 /// Helper function to load a c string into a json map
 fn _ready_json(header_json: *const c_char) -> Result<Option<JsonMap>, u32> {
-    if header_json == null() {
+    if header_json.is_null() {
         Ok(None)
     } else {
         // Build a length tracked string from a null terminated string
@@ -297,7 +297,7 @@ pub extern "C" fn cart_pack_data_default(
     input_buffer_size: usize,
     header_json: *const c_char,
 ) -> CartPackResult {
-    if input_buffer == null() || input_buffer_size == 0 {
+    if input_buffer.is_null() || input_buffer_size == 0 {
         return CartPackResult::new_err(CART_ERROR_NULL_ARGUMENT);
     }
 
@@ -482,7 +482,7 @@ pub extern "C" fn cart_unpack_data(
     input_buffer: *const c_char,
     input_buffer_size: usize,
 ) -> CartUnpackResult {
-    if input_buffer == null() || input_buffer_size == 0 {
+    if input_buffer.is_null() || input_buffer_size == 0 {
         return CartUnpackResult::new_err(CART_ERROR_NULL_ARGUMENT);
     }
 
@@ -533,7 +533,7 @@ pub extern "C" fn cart_is_stream_cart(stream: *mut libc::FILE) -> bool {
 #[no_mangle]
 pub extern "C" fn cart_is_data_cart(data: *const c_char, data_size: usize) -> bool {
     // Refuse empty input
-    if data == null() || data_size == 0 {
+    if data.is_null() || data_size == 0 {
         return false;
     }
 
@@ -586,7 +586,7 @@ pub extern "C" fn cart_get_data_metadata_only(
     data: *const c_char,
     data_size: usize,
 ) -> CartUnpackResult {
-    if data == null() || data_size == 0 {
+    if data.is_null() || data_size == 0 {
         return CartUnpackResult::new_err(CART_ERROR_NULL_ARGUMENT);
     }
 
@@ -607,21 +607,21 @@ pub extern "C" fn cart_get_data_metadata_only(
 #[no_mangle]
 pub extern "C" fn cart_free_unpack_result(mut buf: CartUnpackResult) {
     unsafe {
-        if buf.body != null_mut() {
+        if !buf.body.is_null() {
             let s = std::slice::from_raw_parts_mut(buf.body, buf.body_size as usize);
             let s = s.as_mut_ptr();
             drop(Box::from_raw(s));
             buf.body = null_mut();
             buf.body_size = 0;
         }
-        if buf.header_json != null_mut() {
+        if !buf.header_json.is_null() {
             let s = std::slice::from_raw_parts_mut(buf.header_json, buf.header_json_size as usize);
             let s = s.as_mut_ptr();
             drop(Box::from_raw(s));
             buf.header_json = null_mut();
             buf.header_json_size = 0;
         }
-        if buf.footer_json != null_mut() {
+        if !buf.footer_json.is_null() {
             let s = std::slice::from_raw_parts_mut(buf.footer_json, buf.footer_json_size as usize);
             let s = s.as_mut_ptr();
             drop(Box::from_raw(s));
@@ -638,7 +638,7 @@ pub extern "C" fn cart_free_unpack_result(mut buf: CartUnpackResult) {
 #[no_mangle]
 pub extern "C" fn cart_free_pack_result(mut buf: CartPackResult) {
     unsafe {
-        if buf.packed != null_mut() {
+        if !buf.packed.is_null() {
             let s = std::slice::from_raw_parts_mut(buf.packed, buf.packed_size as usize);
             let s = s.as_mut_ptr();
             drop(Box::from_raw(s));
@@ -702,7 +702,7 @@ mod tests {
         assert_eq!(out.error, CART_NO_ERROR);
         assert_eq!(out.body, null_mut());
         assert_eq!(out.body_size, 0);
-        assert!(out.footer_json != null_mut());
+        assert!(!out.footer_json.is_null());
         assert!(out.footer_json_size > 0);
 
         // Check the header metadata
@@ -759,7 +759,7 @@ mod tests {
         assert_eq!(out.body_size, 0);
         assert_eq!(out.header_json, null_mut());
         assert_eq!(out.header_json_size, 0);
-        assert!(out.footer_json != null_mut());
+        assert!(!out.footer_json.is_null());
         assert!(out.footer_json_size > 0);
 
         // Check the output is decoded right
@@ -791,7 +791,7 @@ mod tests {
         assert_eq!(out.error, CART_NO_ERROR);
         assert_eq!(out.header_json, null_mut());
         assert_eq!(out.header_json_size, 0);
-        assert!(out.footer_json != null_mut());
+        assert!(!out.footer_json.is_null());
         assert!(out.footer_json_size > 0);
 
         // Check the output is decoded right

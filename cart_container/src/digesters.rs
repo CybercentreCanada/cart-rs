@@ -29,6 +29,7 @@ pub fn default_digesters() -> Vec<Box<dyn Digester>> {
 }
 
 /// Calculates the MD5 of the file body
+#[derive(Default)]
 pub struct MD5Digest {
     hasher: md5::Md5
 }
@@ -36,9 +37,7 @@ pub struct MD5Digest {
 impl MD5Digest {
     /// Create digester to produce MD5
     pub fn new() -> Self {
-        Self {
-            hasher: md5::Md5::new()
-        }
+        Self::default()
     }
 }
 
@@ -48,7 +47,7 @@ impl Digester for MD5Digest {
     }
 
     fn name(&self) -> String {
-        return "md5".to_owned()
+        "md5".to_owned()
     }
 
     fn finish(&mut self) -> String {
@@ -57,6 +56,7 @@ impl Digester for MD5Digest {
 }
 
 /// Calculates the SHA1 of the file body
+#[derive(Default)]
 pub struct SHA1Digest {
     hasher: sha1::Sha1
 }
@@ -64,9 +64,7 @@ pub struct SHA1Digest {
 impl SHA1Digest {
     /// Create new digester to produce SHA1
     pub fn new() -> Self {
-        Self {
-            hasher: sha1::Sha1::new()
-        }
+        Self::default()
     }
 }
 
@@ -76,7 +74,7 @@ impl Digester for SHA1Digest {
     }
 
     fn name(&self) -> String {
-        return "sha1".to_owned()
+        "sha1".to_owned()
     }
 
     fn finish(&mut self) -> String {
@@ -85,6 +83,7 @@ impl Digester for SHA1Digest {
 }
 
 /// Calculates the SHA256 of the file body
+#[derive(Default)]
 pub struct SHA256Digest {
     hasher: sha2::Sha256
 }
@@ -92,9 +91,7 @@ pub struct SHA256Digest {
 impl SHA256Digest {
     /// Create new digester to produce SHA256
     pub fn new() -> Self {
-        Self {
-            hasher: sha2::Sha256::new()
-        }
+        Self::default()
     }
 }
 
@@ -113,6 +110,7 @@ impl Digester for SHA256Digest {
 }
 
 /// Accumulates the length of the file body
+#[derive(Default)]
 pub struct LengthDigest {
     counter: u64
 }
@@ -120,9 +118,7 @@ pub struct LengthDigest {
 impl LengthDigest {
     /// Create new digester to produce file length
     pub fn new() -> Self {
-        Self {
-            counter: 0
-        }
+        Self::default()
     }
 }
 

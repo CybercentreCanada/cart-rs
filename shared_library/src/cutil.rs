@@ -1,6 +1,4 @@
-use std::ptr::null_mut;
-
-/// A module for utility classes and functions for accessing values passed from or returned to c code.
+//! A module for utility classes and functions for accessing values passed from or returned to c code.
 
 use libc::c_void;
 
@@ -29,7 +27,7 @@ impl std::io::Read for CFileReader {
 
 impl CFileReader {
     pub fn new(stream: *mut libc::FILE) -> Result<Self, &'static str> {
-        if stream == null_mut() {
+        if stream.is_null() {
             Err("Null is not a file stream.")
         } else {
             Ok(Self{stream})
@@ -60,7 +58,7 @@ impl std::io::Write for CFileWriter {
 
 impl CFileWriter {
     pub fn new(stream: *mut libc::FILE) -> Result<Self, &'static str> {
-        if stream == null_mut() {
+        if stream.is_null() {
             Err("Null is not a file stream.")
         } else {
             Ok(Self{stream})

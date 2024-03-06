@@ -95,9 +95,9 @@ impl<OUT: Write> Write for CipherPassthroughOut<'_, OUT> {
 }
 
 impl<'a, OUT: Write> CipherPassthroughOut<'a, OUT> {
-    pub fn new(output: &'a mut OUT, rc4_key: &Vec<u8>) -> crate::error::Result<Self> {
+    pub fn new(output: &'a mut OUT, rc4_key: &[u8]) -> crate::error::Result<Self> {
         Ok(Self {
-            cipher: Rc4::new_from_slice(&rc4_key)?,
+            cipher: Rc4::new_from_slice(rc4_key)?,
             output,
             buffer: vec![0u8; BLOCK_SIZE]
         })
