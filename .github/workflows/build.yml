@@ -11,7 +11,7 @@ jobs:
     runs-on: "ubuntu-latest"
 
     steps:
-      - uses: actions/checkout@v3
+      - uses: actions/checkout@v4
       - uses: dtolnay/rust-toolchain@stable
       - run: |
           export VERSION=`cargo metadata --format-version 1 | jq '.packages[] | select(.name == "cart_container").version' -r`
@@ -19,7 +19,7 @@ jobs:
           if [[ "$GITHUB_REF_NAME" != "v${VERSION}" ]]; then
             exit 1
           fi
-          cargo publish
+          cargo publish -p cart_container
         env:
           CARGO_REGISTRY_TOKEN: '${{ secrets.CARGO_REGISTRY_TOKEN }}'
 
@@ -34,14 +34,14 @@ jobs:
         rust: [x86_64-unknown-linux-gnu]
 
     steps:
-      - uses: actions/checkout@v3
+      - uses: actions/checkout@v4
       - uses: dtolnay/rust-toolchain@master
         with:
           toolchain: stable
           targets: ${{matrix.rust}}
       - run: |
           cargo build --release --target ${{ matrix.rust }}
-          cbindgen --config ./cbindgen.toml --crate cart_container --output target/${{ matrix.rust }}/release/cart.h --lang c
+          cbindgen --config ./shared_library/cbindgen.toml --crate cart --output target/${{ matrix.rust }}/release/cart.h --lang c ./shared_library
           export NAME="cart-${GITHUB_REF_NAME}-${{ matrix.rust }}.tar.gz"
           cd target/${{ matrix.rust }}/release/
           ls .
@@ -65,14 +65,14 @@ jobs:
         rust: [x86_64-pc-windows-msvc]
 
     steps:
-      - uses: actions/checkout@v3
+      - uses: actions/checkout@v4
       - uses: dtolnay/rust-toolchain@master
         with:
           toolchain: stable
           targets: ${{matrix.rust}}
       - run: |
           cargo build --release --target ${{ matrix.rust }}
-          cbindgen --config ./cbindgen.toml --crate cart_container --output target/${{ matrix.rust }}/release/cart.h --lang c
+          cbindgen --config ./shared_library/cbindgen.toml --crate cart --output target/${{ matrix.rust }}/release/cart.h --lang c ./shared_library
           export NAME="cart-${GITHUB_REF_NAME}-${{ matrix.rust }}.tar.gz"
           cd target/${{ matrix.rust }}/release/
           ls .
