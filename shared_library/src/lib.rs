@@ -3,8 +3,6 @@
 //! It neuters the malware so it cannot be executed and encrypts it so anti-virus software
 //! cannot flag the CaRT file as malware.
 //!
-//! The functions, structs, and constants in the root of the package prefixed with `cart`
-//! are all exported to build a c library.
 //!
 //! ```c
 //! #include "cart.h"
@@ -32,72 +30,23 @@
 //! }
 //! ```
 //!
-//! An interfaces more suitable for calling from rust is in the [cart] module.
-//! Note that the crate is named 'cart_container' but the library is exported as 'cart'.
-//!
-//! ```rust
-//! use anyhow::Result;
-//! use ::cart::cart::{pack_stream, JsonMap, unpack_stream};
-//! use tempfile;
-//!
-//! fn main() -> Result<()> {
-//!     // A file to encode
-//!     let input_file = "./readme.md";
-//!     let metadata_json: JsonMap = [("hello".to_owned(), serde_json::json!("world"))].into_iter().collect();
-//!     let carted_file = tempfile::NamedTempFile::new()?;
-//!     let output_file = tempfile::NamedTempFile::new()?;
-//!
-//!     // Encode file
-//!     pack_stream(
-//!         std::fs::File::open(input_file)?,
-//!         carted_file.as_file(),
-//!         Some(metadata_json.clone()),
-//!         None,
-//!         cart::digesters::default_digesters(),
-//!         None
-//!     )?;
-//!
-//!     // Decode file
-//!     let (header, footer) = unpack_stream(
-//!         carted_file.reopen()?,
-//!         output_file.as_file(),
-//!         None
-//!     )?;
-//!
-//!     let original_content = std::fs::read(input_file)?;
-//!     // the content should be preserved
-//!     assert_eq!(std::fs::read(output_file.path())?, original_content);
-//!     // the header should be exactly the same
-//!     assert_eq!(header.unwrap(), metadata_json);
-//!     // the footer should contain all the digests. we used the default set which includes length
-//!     assert_eq!(footer.unwrap().get("length"), Some(&serde_json::Value::from(original_content.len().to_string())));
-//!
-//!     Ok(())
-//! }
-//! ```
+
 #![warn(missing_docs, non_ascii_idents, trivial_numeric_casts,
     unused_crate_dependencies, noop_method_call, single_use_lifetimes, trivial_casts,
     unused_lifetimes, nonstandard_style, variant_size_differences)]
 #![deny(keyword_idents)]
-// #![warn(clippy::missing_docs_in_private_items)]
 #![allow(clippy::needless_return)]
-// #![allow(clippy::needless_return, clippy::while_let_on_iterator, clippy::collapsible_else_if)]
 
 
 use std::ffi::c_char;
-use std::ptr::{null, null_mut};
+use std::ptr::null_mut;
 
-use cart::{pack_stream, unpack_stream};
-use cart::{unpack_header, JsonMap};
+use cart_container::{unpack_stream, pack_stream, JsonMap};
+use cart_container::digesters::default_digesters;
+use cart_container::cart::{unpack_header, unpack_required_header};
 use cutil::{CFileReader, CFileWriter};
-use digesters::default_digesters;
 
-use crate::cart::unpack_required_header;
-
-pub mod cart;
-mod cipher;
 mod cutil;
-pub mod digesters;
 
 /// Error code set when a call completes without errors
 pub const CART_NO_ERROR: u32 = 0;
@@ -117,7 +66,7 @@ pub const CART_ERROR_PROCESSING: u32 = 6;
 /// Helper function to convert a c string with a path into a file object
 fn _open(path: *const c_char, read: bool) -> Result<std::fs::File, u32> {
     // Check for null values
-    if path == null() {
+    if path.is_null() {
         return Err(CART_ERROR_BAD_ARGUMENT_STR);
     }
 
@@ -150,7 +99,7 @@ fn _open(path: *const c_char, read: bool) -> Result<std::fs::File, u32> {
 
 /// Helper function to load a c string into a json map
 fn _ready_json(header_json: *const c_char) -> Result<Option<JsonMap>, u32> {
-    if header_json == null() {
+    if header_json.is_null() {
         Ok(None)
     } else {
         // Build a length tracked string from a null terminated string
@@ -304,7 +253,7 @@ pub extern "C" fn cart_pack_data_default(
     input_buffer_size: usize,
     header_json: *const c_char,
 ) -> CartPackResult {
-    if input_buffer == null() || input_buffer_size == 0 {
+    if input_buffer.is_null() || input_buffer_size == 0 {
         return CartPackResult::new_err(CART_ERROR_NULL_ARGUMENT);
     }
 
@@ -489,7 +438,7 @@ pub extern "C" fn cart_unpack_data(
     input_buffer: *const c_char,
     input_buffer_size: usize,
 ) -> CartUnpackResult {
-    if input_buffer == null() || input_buffer_size == 0 {
+    if input_buffer.is_null() || input_buffer_size == 0 {
         return CartUnpackResult::new_err(CART_ERROR_NULL_ARGUMENT);
     }
 
@@ -540,7 +489,7 @@ pub extern "C" fn cart_is_stream_cart(stream: *mut libc::FILE) -> bool {
 #[no_mangle]
 pub extern "C" fn cart_is_data_cart(data: *const c_char, data_size: usize) -> bool {
     // Refuse empty input
-    if data == null() || data_size == 0 {
+    if data.is_null() || data_size == 0 {
         return false;
     }
 
@@ -593,7 +542,7 @@ pub extern "C" fn cart_get_data_metadata_only(
     data: *const c_char,
     data_size: usize,
 ) -> CartUnpackResult {
-    if data == null() || data_size == 0 {
+    if data.is_null() || data_size == 0 {
         return CartUnpackResult::new_err(CART_ERROR_NULL_ARGUMENT);
     }
 
@@ -614,21 +563,21 @@ pub extern "C" fn cart_get_data_metadata_only(
 #[no_mangle]
 pub extern "C" fn cart_free_unpack_result(mut buf: CartUnpackResult) {
     unsafe {
-        if buf.body != null_mut() {
+        if !buf.body.is_null() {
             let s = std::slice::from_raw_parts_mut(buf.body, buf.body_size as usize);
             let s = s.as_mut_ptr();
             drop(Box::from_raw(s));
             buf.body = null_mut();
             buf.body_size = 0;
         }
-        if buf.header_json != null_mut() {
+        if !buf.header_json.is_null() {
             let s = std::slice::from_raw_parts_mut(buf.header_json, buf.header_json_size as usize);
             let s = s.as_mut_ptr();
             drop(Box::from_raw(s));
             buf.header_json = null_mut();
             buf.header_json_size = 0;
         }
-        if buf.footer_json != null_mut() {
+        if !buf.footer_json.is_null() {
             let s = std::slice::from_raw_parts_mut(buf.footer_json, buf.footer_json_size as usize);
             let s = s.as_mut_ptr();
             drop(Box::from_raw(s));
@@ -645,7 +594,7 @@ pub extern "C" fn cart_free_unpack_result(mut buf: CartUnpackResult) {
 #[no_mangle]
 pub extern "C" fn cart_free_pack_result(mut buf: CartPackResult) {
     unsafe {
-        if buf.packed != null_mut() {
+        if !buf.packed.is_null() {
             let s = std::slice::from_raw_parts_mut(buf.packed, buf.packed_size as usize);
             let s = s.as_mut_ptr();
             drop(Box::from_raw(s));
@@ -684,7 +633,7 @@ mod tests {
         let input_json = CString::new(input_json).unwrap();
 
         // prepare an input
-        let raw_data = std::include_bytes!("cart.rs");
+        let raw_data = std::include_bytes!("lib.rs");
         let mut input = tempfile::NamedTempFile::new().unwrap();
         input.write_all(raw_data).unwrap();
         let input_path = CString::new(input.path().to_str().unwrap()).unwrap();
@@ -709,7 +658,7 @@ mod tests {
         assert_eq!(out.error, CART_NO_ERROR);
         assert_eq!(out.body, null_mut());
         assert_eq!(out.body_size, 0);
-        assert!(out.footer_json != null_mut());
+        assert!(!out.footer_json.is_null());
         assert!(out.footer_json_size > 0);
 
         // Check the header metadata
@@ -734,7 +683,7 @@ mod tests {
     #[test]
     fn round_trip_stream() {
         // prepare an input
-        let raw_data = std::include_bytes!("cart.rs");
+        let raw_data = std::include_bytes!("lib.rs");
         let mut input = tempfile::NamedTempFile::new().unwrap();
         input.write_all(raw_data).unwrap();
         let input_path = CString::new(input.path().to_str().unwrap()).unwrap();
@@ -753,6 +702,8 @@ mod tests {
         let buffer_file = unsafe { fopen(buffer_path.as_ptr(), mode_rw.as_ptr()) };
         assert!(cart_is_stream_cart(buffer_file));
 
+        
+
         // Decode the cart data
         let buffer_file = unsafe { fopen(buffer_path.as_ptr(), mode_rw.as_ptr()) };
         let mut output = tempfile::NamedTempFile::new().unwrap();
@@ -764,7 +715,7 @@ mod tests {
         assert_eq!(out.body_size, 0);
         assert_eq!(out.header_json, null_mut());
         assert_eq!(out.header_json_size, 0);
-        assert!(out.footer_json != null_mut());
+        assert!(!out.footer_json.is_null());
         assert!(out.footer_json_size > 0);
 
         // Check the output is decoded right
@@ -780,7 +731,7 @@ mod tests {
     #[test]
     fn round_trip_buffer() {
         // prepare an input
-        let raw_data = std::include_bytes!("cart.rs");
+        let raw_data = std::include_bytes!("lib.rs");
 
         // Encode the data with cart
         let packed =
@@ -796,7 +747,7 @@ mod tests {
         assert_eq!(out.error, CART_NO_ERROR);
         assert_eq!(out.header_json, null_mut());
         assert_eq!(out.header_json_size, 0);
-        assert!(out.footer_json != null_mut());
+        assert!(!out.footer_json.is_null());
         assert!(out.footer_json_size > 0);
 
         // Check the output is decoded right
@@ -811,7 +762,7 @@ mod tests {
     #[test]
     fn bad_input_buffer() {
         // prepare an input
-        let raw_data = std::include_bytes!("cart.rs");
+        let raw_data = std::include_bytes!("lib.rs");
         let bad_metadata = r#"{"name": "snake}"#;
         let bad_metadata = CString::new(bad_metadata).unwrap();
 

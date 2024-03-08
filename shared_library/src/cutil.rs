@@ -1,8 +1,5 @@
-use std::ptr::null_mut;
+//! A module for utility classes and functions for accessing values passed from or returned to c code.
 
-/// A module for utility classes and functions for accessing values passed from or returned to c code.
-
-use anyhow::Result;
 use libc::c_void;
 
 
@@ -19,7 +16,7 @@ impl std::io::Read for CFileReader {
                 if libc::feof(self.stream) != 0 {
                     return Ok(size)
                 } else {
-                    return Err(std::io::Error::new(std::io::ErrorKind::InvalidData, anyhow::anyhow!("Failed to read from raw file handle")))
+                    return Err(std::io::Error::new(std::io::ErrorKind::InvalidData, "Failed to read from raw file handle"))
                 }
             } else {
                 return Ok(size)
@@ -29,9 +26,9 @@ impl std::io::Read for CFileReader {
 }
 
 impl CFileReader {
-    pub fn new(stream: *mut libc::FILE) -> Result<Self> {
-        if stream == null_mut() {
-            Err(anyhow::anyhow!("Null is not a file stream."))
+    pub fn new(stream: *mut libc::FILE) -> Result<Self, &'static str> {
+        if stream.is_null() {
+            Err("Null is not a file stream.")
         } else {
             Ok(Self{stream})
         }
@@ -54,15 +51,15 @@ impl std::io::Write for CFileWriter {
         if unsafe {libc::fflush(self.stream)} == 0 {
             Ok(())
         } else {
-            Err(std::io::Error::new(std::io::ErrorKind::InvalidData, anyhow::anyhow!("Failed to flush raw file handle")))
+            Err(std::io::Error::new(std::io::ErrorKind::InvalidData, "Failed to flush raw file handle"))
         }
     }
 }
 
 impl CFileWriter {
-    pub fn new(stream: *mut libc::FILE) -> Result<Self> {
-        if stream == null_mut() {
-            Err(anyhow::anyhow!("Null is not a file stream."))
+    pub fn new(stream: *mut libc::FILE) -> Result<Self, &'static str> {
+        if stream.is_null() {
+            Err("Null is not a file stream.")
         } else {
             Ok(Self{stream})
         }

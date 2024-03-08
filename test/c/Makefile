@@ -3,8 +3,8 @@ test: main
 	./main
 
 cart.h:
-	(cd ../..; cbindgen --config ./cbindgen.toml --crate cart_container --output cart.h --lang c)
-	mv ../../cart.h ./cart.h
+	(cd ../../shared_library; cbindgen --config ./cbindgen.toml --crate cart --output cart.h --lang c)
+	mv ../../shared_library/cart.h ./cart.h
 
 libcart.a:
 	(cd ../..; cargo build --lib --release)

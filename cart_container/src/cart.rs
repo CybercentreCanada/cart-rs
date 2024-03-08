@@ -1,10 +1,17 @@
+//! The functions that actually implement stream encoding and decoding of the cart container.
+//! 
+//! This module also makes public header processing functions to allow parsing of only 
+//! header data without fully unpacking the file data.
+//! 
+#![allow(clippy::similar_names)]
+
 use std::io::{Write, Read};
-use anyhow::Context;
 use bytes::{BufMut, Buf};
 use rc4::{KeyInit, StreamCipher};
 
 use crate::cipher::{CipherPassthroughIn, CipherPassthroughOut, DEFAULT_RC4_KEY, Rc4};
 use crate::digesters::Digester;
+use crate::error::{Result, CartError};
 
 /// Alias for a serde mapping cart will accept for metadata.
 pub type JsonMap = serde_json::Map<String, serde_json::Value>;
@@ -21,9 +28,14 @@ const RESERVED: u64 = 0;
 
 
 /// Encoding function for cart format.
+/// 
+/// # Errors
+/// - io operations on the input or output stream
+/// - metadata that is not json serializable
+/// - badly formatted rc4 keys
 pub fn pack_stream<IN: Read, OUT: Write>(mut istream: IN, mut ostream: OUT,
     optional_header: Option<JsonMap>, optional_footer: Option<JsonMap>,
-    mut digesters: Vec<Box<dyn Digester>>, rc4_key_override: Option<Vec<u8>>) -> anyhow::Result<()>
+    mut digesters: Vec<Box<dyn Digester>>, rc4_key_override: Option<Vec<u8>>) -> Result<()>
 {
     let (rc4_key, key_override) = match rc4_key_override {
         Some(key) => (key, true),
@@ -41,7 +53,7 @@ pub fn pack_stream<IN: Read, OUT: Write>(mut istream: IN, mut ostream: OUT,
         let mut opt_header_buffer = serde_json::to_vec(&header)?;
 
         // RC4
-        let mut cipher = Rc4::new_from_slice(&rc4_key).context("Bad RC4 Key")?;
+        let mut cipher = Rc4::new_from_slice(&rc4_key)?;
         cipher.try_apply_keystream(&mut opt_header_buffer)?;
 
         opt_header_len = opt_header_buffer.len() as u64;
@@ -51,8 +63,7 @@ pub fn pack_stream<IN: Read, OUT: Write>(mut istream: IN, mut ostream: OUT,
     // Write the mandatory header
     ostream.write_all(&{
         // Build the header in a buffer first
-        let mut header = vec![];
-        header.reserve(MANDATORY_HEADER_SIZE);
+        let mut header = Vec::with_capacity(MANDATORY_HEADER_SIZE);
         header.put_slice(HEADER_MAGIC); // MAGIC
         header.put_i16_le(MAJOR_VERSION); // MAJOR VERSION
         header.put_u64_le(RESERVED); // Reserved
@@ -66,7 +77,7 @@ pub fn pack_stream<IN: Read, OUT: Write>(mut istream: IN, mut ostream: OUT,
         // Check the header, and write it
         pos += header.len() as u64;
         if header.len() != MANDATORY_HEADER_SIZE {
-            return Err(anyhow::anyhow!("Header encoding error"))
+            return Err(CartError::header_encoding())
         }
         header
     })?;
@@ -91,8 +102,8 @@ pub fn pack_stream<IN: Read, OUT: Write>(mut istream: IN, mut ostream: OUT,
         }
 
         // update the various digests with this block
-        for digest in digesters.iter_mut() {
-            digest.update(&buffer[0..bytes_read])?;
+        for digest in &mut digesters {
+            digest.update(&buffer[0..bytes_read]);
         }
 
         // compress and then cipher any resulting output blocks
@@ -128,10 +139,9 @@ pub fn pack_stream<IN: Read, OUT: Write>(mut istream: IN, mut ostream: OUT,
     };
 
     // Write the mandatory footer
-    ostream.write_all(&{
+    {
         // Build the header in a buffer first
-        let mut footer = vec![];
-        footer.reserve(MANDATORY_FOOTER_SIZE);
+        let mut footer = Vec::with_capacity(MANDATORY_FOOTER_SIZE);
         footer.put_slice(FOOTER_MAGIC); // MAGIC
         footer.put_u64_le(RESERVED); // Reserved
         footer.put_u64_le(footer_pos);
@@ -139,19 +149,25 @@ pub fn pack_stream<IN: Read, OUT: Write>(mut istream: IN, mut ostream: OUT,
 
         // Check the footer, and write it
         if footer.len() != MANDATORY_FOOTER_SIZE {
-            return Err(anyhow::anyhow!("Footer encoding error"))
+            return Err(CartError::footer_encoding())
         }
-        footer
-    })?;
+        ostream.write_all(&footer)?;
+    }    
     ostream.flush()?;
-    return Ok(())
+    Ok(())
 }
 
 /// Decode and check only the mandatory parts of the header
 ///
 /// This returns the rc4 key, the size of the optional header, and how many bytes have been read.
-pub (crate) fn unpack_required_header<IN: Read>(mut istream: IN, rc4_key_override: Option<Vec<u8>>)
-    -> anyhow::Result<(Vec<u8>, u64, u64)>
+/// This method is only useful if you want to peek at the header information without parsing the 
+/// entire file.
+/// 
+/// # Errors
+/// - missing or malformed header data
+/// - read operations on the input stream failing
+pub fn unpack_required_header<IN: Read>(mut istream: IN, rc4_key_override: Option<Vec<u8>>)
+    -> Result<(Vec<u8>, u64, u64)>
 {
     let mut pos: u64 = 0;
 
@@ -164,14 +180,14 @@ pub (crate) fn unpack_required_header<IN: Read>(mut istream: IN, rc4_key_overrid
     // Check fixed value fields
     {
         if !header_buffer.starts_with(HEADER_MAGIC) {
-            return Err(anyhow::anyhow!("Could not unpack mandatory header"))
+            return Err(CartError::header_corrupt())
         }
         header_buffer.advance(HEADER_MAGIC.len());
         if header_buffer.get_i16_le() != MAJOR_VERSION {
-            return Err(anyhow::anyhow!("Could not unpack mandatory header"))
+            return Err(CartError::header_corrupt())
         }
         if header_buffer.get_u64_le() != RESERVED {
-            return Err(anyhow::anyhow!("Could not unpack mandatory header"))
+            return Err(CartError::header_corrupt())
         }
     }
 
@@ -189,14 +205,20 @@ pub (crate) fn unpack_required_header<IN: Read>(mut istream: IN, rc4_key_overrid
 }
 
 /// Decode and check the entire header, including the optional metadata
-pub (crate) fn unpack_header<IN: Read>(mut istream: IN, rc4_key_override: Option<Vec<u8>>)
-    -> anyhow::Result<(Vec<u8>, Option<JsonMap>, u64)>
+/// This method is only useful if you want to peek at the header information without parsing the entire file.
+/// 
+/// # Errors
+/// - missing or malformed header data
+/// - read operations on the input stream failing
+/// - header metadata being too large for memory
+pub fn unpack_header<IN: Read>(mut istream: IN, rc4_key_override: Option<Vec<u8>>)
+    -> Result<(Vec<u8>, Option<JsonMap>, u64)>
 {
     let (rc4_key, opt_header_len, mut pos) = unpack_required_header(&mut istream, rc4_key_override)?;
     // Read and unpack any optional header.
     let mut optional_header = None;
     if opt_header_len > 0 {
-        let mut buffer = vec![0u8; opt_header_len as usize];
+        let mut buffer = vec![0u8; usize::try_from(opt_header_len)?];
         istream.read_exact(&mut buffer)?;
         pos += opt_header_len;
 
@@ -208,18 +230,24 @@ pub (crate) fn unpack_header<IN: Read>(mut istream: IN, rc4_key_override: Option
 }
 
 /// Decode function for cart formatted data.
+/// 
+/// # Errors
+/// - missing or malformed header data
+/// - io operations on the input or output stream failing
+/// - metadata being too large for memory
+/// - corrupted stream content
+/// - badly formatted rc4 keys
 pub fn unpack_stream<IN: Read, OUT: Write>(mut istream: IN, mut ostream: OUT,
-    rc4_key_override: Option<Vec<u8>>) -> anyhow::Result<(Option<JsonMap>, Option<JsonMap>)>
+    rc4_key_override: Option<Vec<u8>>) -> Result<(Option<JsonMap>, Option<JsonMap>)>
 {
     // unpack to output stream, return header / footer
     // First read and unpack the mandatory header. This will tell us the RC4 key
     // and optional header length.
     // Optional header and rest of document are RC4'd
-    let (rc4_key, optional_header, _pos) = unpack_header(&mut istream, rc4_key_override)
-        .context("Could not unpack header")?;
+    let (rc4_key, optional_header, _pos) = unpack_header(&mut istream, rc4_key_override)?;
 
     // Read / Unpack / Output the binary stream 1 block at a time.
-    let cipher = Rc4::new_from_slice(&rc4_key).context("Invalid rc4 key")?;
+    let cipher = Rc4::new_from_slice(&rc4_key)?;
     let mut bz = flate2::read::ZlibDecoder::new_with_buf(
         CipherPassthroughIn::new(istream, cipher),
         vec![0u8; BLOCK_SIZE]
@@ -227,29 +255,28 @@ pub fn unpack_stream<IN: Read, OUT: Write>(mut istream: IN, mut ostream: OUT,
 
     let mut buffer = vec![0u8; BLOCK_SIZE];
     loop {
-        let size = bz.read(&mut buffer).context("reading from compressed stream")?;
+        let size = bz.read(&mut buffer)?;
         if size == 0 {
             break;
         }
-        ostream.write_all(&buffer[0..size]).context("writing output")?;
+        ostream.write_all(&buffer[0..size])?;
     }
-    let last_chunk = bz.into_inner().last_chunk();
+    let last_chunk = bz.into_inner().last_chunk()?;
 
     // unused data will be the
     let footer_offset = last_chunk.len() - MANDATORY_FOOTER_SIZE;
     let mut mandatory_footer_raw = bytes::Bytes::copy_from_slice(&last_chunk[footer_offset..]);
-
     {
         if !mandatory_footer_raw.starts_with(FOOTER_MAGIC) {
-            return Err(anyhow::anyhow!("Corrupt cart: Missing footer magic"));
+            return Err(CartError::footer_corrupt());
         }
         mandatory_footer_raw.advance(FOOTER_MAGIC.len());
         if mandatory_footer_raw.get_u64_le() != RESERVED {
-            return Err(anyhow::anyhow!("Corrupt cart: Reserved footer space not zeroed"));
+            return Err(CartError::footer_corrupt());
         }
     }
     let _opt_footer_pos = mandatory_footer_raw.get_u64_le();
-    let opt_footer_len = mandatory_footer_raw.get_u64_le() as usize;
+    let opt_footer_len = usize::try_from(mandatory_footer_raw.get_u64_le())?;
 
     let opt_footer_offset = footer_offset - opt_footer_len;
 
@@ -261,7 +288,7 @@ pub fn unpack_stream<IN: Read, OUT: Write>(mut istream: IN, mut ostream: OUT,
         optional_footer = Some(serde_json::from_slice(&optional_crypt)?);
     }
     ostream.flush()?;
-    return Ok((optional_header, optional_footer))
+    Ok((optional_header, optional_footer))
 }
 
 
@@ -271,7 +298,7 @@ mod tests {
 
     use md5::Digest;
 
-    use crate::cart::{JsonMap, MANDATORY_HEADER_SIZE};
+    use crate::cart::{JsonMap, BLOCK_SIZE, MANDATORY_HEADER_SIZE};
     use crate::digesters::default_digesters;
 
     use super::{pack_stream, unpack_stream};
@@ -296,7 +323,14 @@ mod tests {
 
     #[test]
     fn round_trip() {
+        // make sure our test data is several blocks long
         let raw_data = std::include_bytes!("cart.rs");
+        let mut data = vec![];
+        while data.len() <= BLOCK_SIZE * 2 {
+            data.extend(raw_data);
+        }
+        let raw_data = data.as_slice();
+
         let input_cursor = std::io::Cursor::new(raw_data);
 
         let mut buffer = tempfile::tempfile().unwrap();
@@ -335,6 +369,49 @@ mod tests {
         // Check payload
         assert_eq!(output, raw_data);
     }
+
+    #[test]
+    fn round_trip_single_block() {
+        let raw_data = b"A small ammount of data, such that it all falls in a single block.";
+        let input_cursor = std::io::Cursor::new(raw_data);
+
+        let mut buffer = tempfile::tempfile().unwrap();
+
+        let mut original_header = JsonMap::new();
+        original_header.insert("abc".to_owned(), serde_json::to_value("123").unwrap());
+
+        let mut original_footer = JsonMap::new();
+        original_footer.insert("xyz".to_owned(), serde_json::to_value("999999999999999").unwrap());
+
+        pack_stream(
+            input_cursor,
+            &mut buffer,
+            Some(original_header.clone()),
+            Some(original_footer.clone()),
+            default_digesters(),
+            None
+        ).unwrap();
+        buffer.seek(SeekFrom::Start(0)).unwrap();
+
+        let mut output = vec![];
+        let (header, footer) = unpack_stream(buffer, &mut output, None).unwrap();
+
+        // Check header
+        let header = header.unwrap();
+        assert_eq!(header, original_header);
+
+        // Check footer
+        let footer = footer.unwrap();
+        assert_eq!(footer.get("length"), Some(&serde_json::to_value(raw_data.len().to_string()).unwrap()));
+        let mut hasher = sha2::Sha256::new();
+        hasher.update(raw_data);
+        assert_eq!(footer.get("sha256"), Some(&serde_json::to_value(format!("{:x}", hasher.finalize())).unwrap()));
+        assert_eq!(footer.get("xyz"), Some(&serde_json::to_value("999999999999999").unwrap()));
+
+        // Check payload
+        assert_eq!(output, raw_data);
+    }
+
 
     #[test]
     fn empty() {

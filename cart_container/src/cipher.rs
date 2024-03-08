@@ -2,10 +2,9 @@
 /// a stream object.
 
 use std::io::{Read, Write};
-use anyhow::Context;
 use rc4::{KeyInit, StreamCipher};
 
-use crate::cart::BLOCK_SIZE;
+use crate::{cart::BLOCK_SIZE, error::CartError};
 
 
 /// Alias for the specific configuration of RC4 that cart uses.
@@ -40,7 +39,7 @@ impl<IN: Read> Read for CipherPassthroughIn<IN> {
 
             // Apply the rc4 cipher pass and copy at the same time
             if let Err(err) = self.cipher.apply_keystream_b2b(&self.buffer, &mut buf[0..*size]) {
-                return Err(std::io::Error::new(std::io::ErrorKind::InvalidData, anyhow::anyhow!("rc4 error {err}")))
+                return Err(std::io::Error::new(std::io::ErrorKind::InvalidData, CartError::from(err)))
             }
         }
         return out;
@@ -58,8 +57,9 @@ impl<IN: Read> CipherPassthroughIn<IN> {
 
     // Extract the last chunk read from the stream. This can be used to
     // recover less-than-chunk sized footer data that was appended.
-    pub fn last_chunk(self) -> Vec<u8> {
-        self.buffer
+    pub fn last_chunk(mut self) -> Result<Vec<u8>, std::io::Error> {
+        self.stream.read_to_end(&mut self.buffer)?;
+        Ok(self.buffer)
     }
 }
 
@@ -74,19 +74,19 @@ pub (crate) struct CipherPassthroughOut<'a, OUT: Write> {
     buffer: Vec<u8>,
 }
 
-impl<'a, OUT: Write> Write for CipherPassthroughOut<'a, OUT> {
+impl<OUT: Write> Write for CipherPassthroughOut<'_, OUT> {
     fn write(&mut self, buf: &[u8]) -> std::io::Result<usize> {
         // Adjust buffer to fit
         self.buffer.resize(buf.len(), 0);
 
         // Apply rc4 pass and copy between buffers at the same time
         if let Err(err) = self.cipher.apply_keystream_b2b(buf, &mut self.buffer) {
-            return Err(std::io::Error::new(std::io::ErrorKind::InvalidData, anyhow::anyhow!(err)))
+            return Err(std::io::Error::new(std::io::ErrorKind::InvalidData, CartError::from(err)))
         };
 
         // Call the underlying write operation
         self.output.write_all(&self.buffer[0..buf.len()])?;
-        return Ok(buf.len());
+        Ok(buf.len())
     }
 
     fn flush(&mut self) -> std::io::Result<()> {
@@ -95,9 +95,9 @@ impl<'a, OUT: Write> Write for CipherPassthroughOut<'a, OUT> {
 }
 
 impl<'a, OUT: Write> CipherPassthroughOut<'a, OUT> {
-    pub fn new(output: &'a mut OUT, rc4_key: &Vec<u8>) -> anyhow::Result<Self> {
+    pub fn new(output: &'a mut OUT, rc4_key: &[u8]) -> crate::error::Result<Self> {
         Ok(Self {
-            cipher: Rc4::new_from_slice(&rc4_key).context("Bad RC4 Key")?,
+            cipher: Rc4::new_from_slice(rc4_key)?,
             output,
             buffer: vec![0u8; BLOCK_SIZE]
         })
