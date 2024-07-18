@@ -296,7 +296,7 @@ pub fn unpack_stream<IN: Read, OUT: Write>(mut istream: IN, mut ostream: OUT,
 mod tests {
     use std::io::{SeekFrom, Seek};
 
-    use md5::Digest;
+    use sha2::Digest;
 
     use crate::cart::{JsonMap, BLOCK_SIZE, MANDATORY_HEADER_SIZE};
     use crate::digesters::default_digesters;
