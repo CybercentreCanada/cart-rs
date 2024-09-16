@@ -3,7 +3,7 @@
 //! to include in a cart file footer.
 //! 
 
-use md5::Digest;
+use sha2::Digest;
 
 /// Interface for digests that produce footer entries
 pub trait Digester {
@@ -22,13 +22,16 @@ pub trait Digester {
 #[must_use]
 pub fn default_digesters() -> Vec<Box<dyn Digester>> {
     vec![
+        #[cfg(feature = "md5")]
         Box::new(MD5Digest::new()),
+        #[cfg(feature = "sha1")]
         Box::new(SHA1Digest::new()),
         Box::new(SHA256Digest::new()),
         Box::new(LengthDigest::new()),
     ]
 }
 
+#[cfg(feature = "md5")]
 /// Calculates the MD5 of the file body
 #[derive(Default)]
 #[must_use]
@@ -36,6 +39,7 @@ pub struct MD5Digest {
     hasher: md5::Md5
 }
 
+#[cfg(feature = "md5")]
 impl MD5Digest {
     /// Create digester to produce MD5
     pub fn new() -> Self {
@@ -43,6 +47,7 @@ impl MD5Digest {
     }
 }
 
+#[cfg(feature = "md5")]
 impl Digester for MD5Digest {
     fn update(&mut self, data: &[u8]) {
         self.hasher.update(data);
@@ -57,6 +62,7 @@ impl Digester for MD5Digest {
     }
 }
 
+#[cfg(feature = "sha1")]
 /// Calculates the SHA1 of the file body
 #[derive(Default)]
 #[must_use]
@@ -64,6 +70,7 @@ pub struct SHA1Digest {
     hasher: sha1::Sha1
 }
 
+#[cfg(feature = "sha1")]
 impl SHA1Digest {
     /// Create new digester to produce SHA1
     pub fn new() -> Self {
@@ -71,6 +78,7 @@ impl SHA1Digest {
     }
 }
 
+#[cfg(feature = "sha1")]
 impl Digester for SHA1Digest {
     fn update(&mut self, data: &[u8]) {
         self.hasher.update(data);
