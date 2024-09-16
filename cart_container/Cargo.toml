@@ -1,6 +1,6 @@
 [package]
 name = "cart_container"
-version = "1.0.0-alpha"
+version = "1.0.0"
 edition = "2021"
 authors = ["The Canadian Center for Cybersecurity"]
 license = "MIT"
@@ -33,7 +33,7 @@ flate2 = "1"
 # crypto packages from the RustCrypto project
 # cipher = { version = "0.4", features = [ "std" ] }
 rc4 = "0.1"
-md-5 = { version= "0.10", optional = true }
+md-5 = { version = "0.10", optional = true }
 sha1 = { version = "0.10", optional = true }
 sha2 = "0.10"
 
