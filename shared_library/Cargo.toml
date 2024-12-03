@@ -12,7 +12,7 @@ repository = "https://github.com/CybercentreCanada/cart-rs"
 crate-type = ["cdylib", "staticlib"]
 
 [dependencies]
-cart_container = { "version" = "1.0.0-alpha", "path" = "../cart_container" }
+cart_container = { "version" = "1.0.0", "path" = "../cart_container" }
 serde_json = "1.0" # JSON library
 
 # Interface for interacting with c types
